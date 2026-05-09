@@ -7,6 +7,6 @@ public record UpdateScheduleRequest(
         LocalDateTime startTime,
         LocalDateTime endTime,
         Boolean allDay,
-        String sourceMeetingId
+        String meetingId
 ) {
 }

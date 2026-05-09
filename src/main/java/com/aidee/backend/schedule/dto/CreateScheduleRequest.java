@@ -8,6 +8,6 @@ public record CreateScheduleRequest(
         LocalDateTime endTime,
         boolean allDay,
         String sourceType,
-        String sourceMeetingId
+        String meetingId
 ) {
 }

@@ -38,9 +38,9 @@ public class ScheduleService {
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
 
         Meeting meeting = null;
-        if (request.sourceMeetingId() != null) {
-            meeting = meetingRepository.findById(request.sourceMeetingId())
-                    .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + request.sourceMeetingId()));
+        if (request.meetingId() != null) {
+            meeting = meetingRepository.findById(request.meetingId())
+                    .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + request.meetingId()));
         }
 
         Schedule schedule = Schedule.create(
@@ -60,9 +60,9 @@ public class ScheduleService {
                 .orElseThrow(() -> new ResourceNotFoundException("일정을 찾을 수 없습니다: " + scheduleId));
 
         Meeting meeting = null;
-        if (request.sourceMeetingId() != null) {
-            meeting = meetingRepository.findById(request.sourceMeetingId())
-                    .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + request.sourceMeetingId()));
+        if (request.meetingId() != null) {
+            meeting = meetingRepository.findById(request.meetingId())
+                    .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + request.meetingId()));
         }
 
         schedule.update(request.title(), request.startTime(), request.endTime(), request.allDay(), meeting);
