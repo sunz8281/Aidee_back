@@ -95,43 +95,30 @@ public class MeetingService {
                 Files.copy(audioFile.getInputStream(), tempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
                 // S3 업로드
+                sendProgress(emitter, "upload", "녹음 파일을 업로드하는 중입니다");
                 s3Client.putObject(
                         PutObjectRequest.builder().bucket(bucket).key(s3Key).build(),
                         RequestBody.fromFile(tempFile)
                 );
                 updateMeetingRecordingFile(meetingId, s3Key);
+                sendProgress(emitter, "upload", "녹음 파일 업로드가 완료되었습니다");
 
                 // STT 처리
-                SttResult sttResult = sttService.transcribe(tempFile.toString(), progress -> {
-                    try {
-                        emitter.send(SseEmitter.event()
-                                .name("stt_progress")
-                                .data("{\"progress\":" + progress + "}"));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+                sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다");
+                SttResult sttResult = sttService.transcribe(tempFile.toString(), progress ->
+                        sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다 (" + progress + "%)"));
 
-                emitter.send(SseEmitter.event()
-                        .name("stt_done")
-                        .data("{\"script\":\"" + sttResult.fullText().replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
+                sendProgress(emitter, "stt_done", "음성 변환이 완료되었습니다");
 
                 // LLM 분석
-                LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), step -> {
-                    try {
-                        emitter.send(SseEmitter.event()
-                                .name("ai_progress")
-                                .data("{\"step\":\"" + step + "\"}"));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+                LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), step ->
+                        sendProgress(emitter, "analyzing", step));
 
                 saveAnalysisResult(meetingId, sttResult, result);
 
                 emitter.send(SseEmitter.event()
                         .name("done")
-                        .data("{\"meetingId\":\"" + meetingId + "\"}"));
+                        .data("{\"step\":\"done\",\"message\":\"분석이 완료되었습니다\",\"meetingId\":\"" + meetingId + "\"}"));
                 emitter.complete();
 
             } catch (Exception e) {
@@ -190,6 +177,16 @@ public class MeetingService {
 
         String audioUrl = generateAudioUrl(meeting.getRecordingFile());
         return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl);
+    }
+
+    private void sendProgress(SseEmitter emitter, String step, String message) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("progress")
+                    .data("{\"step\":\"" + step + "\",\"message\":\"" + message + "\"}"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String generateAudioUrl(String s3Key) {
