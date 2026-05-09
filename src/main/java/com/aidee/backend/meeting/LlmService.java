@@ -25,13 +25,14 @@ public class LlmService {
 
             String prompt = """
                     다음 회의 스크립트를 분석하여 아래 JSON 형식으로만 반환해주세요. 다른 텍스트는 포함하지 마세요.
+                    summary는 반드시 100자 이내로 작성해주세요.
 
                     스크립트:
                     %s
 
                     반환 형식:
                     {
-                      "summary": "회의 전체 요약 (3-5문장)",
+                      "summary": "회의 전체 요약 (100자 이내)",
                       "schedules": [
                         {
                           "title": "일정 제목",
@@ -39,10 +40,6 @@ public class LlmService {
                           "endTime": "2026-05-16T11:00:00",
                           "allDay": false
                         }
-                      ],
-                      "scripts": [
-                        {"startTime": 0, "contents": "첫 번째 세그먼트"},
-                        {"startTime": 30, "contents": "두 번째 세그먼트"}
                       ]
                     }
                     """.formatted(script);
@@ -56,7 +53,6 @@ public class LlmService {
             stepCallback.accept("일정 추출 중");
             String responseText = geminiClient.generateContent(GeminiClient.TEXT_MODEL, requestBody);
 
-            // 마크다운 코드블록 제거
             String json = responseText.trim();
             if (json.startsWith("```")) {
                 json = json.replaceAll("^```[a-z]*\\n?", "").replaceAll("```$", "").trim();
@@ -84,14 +80,6 @@ public class LlmService {
             ));
         }
 
-        List<LlmAnalysisResult.ScriptData> scripts = new ArrayList<>();
-        for (JsonNode s : root.path("scripts")) {
-            scripts.add(new LlmAnalysisResult.ScriptData(
-                    s.path("startTime").asInt(),
-                    s.path("contents").asText()
-            ));
-        }
-
-        return new LlmAnalysisResult(summary, schedules, scripts);
+        return new LlmAnalysisResult(summary, schedules);
     }
 }

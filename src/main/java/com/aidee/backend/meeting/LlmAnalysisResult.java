@@ -5,18 +5,12 @@ import java.util.List;
 
 public record LlmAnalysisResult(
         String summary,
-        List<ScheduleData> schedules,
-        List<ScriptData> scripts
+        List<ScheduleData> schedules
 ) {
     public record ScheduleData(
             String title,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean allDay
-    ) {}
-
-    public record ScriptData(
-            int startTime,
-            String contents
     ) {}
 }

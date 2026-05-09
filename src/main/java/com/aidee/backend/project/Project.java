@@ -38,4 +38,8 @@ public class Project {
         this.title = title;
         this.updatedAt = LocalDateTime.now();
     }
+
+    public void touch() {
+        this.updatedAt = LocalDateTime.now();
+    }
 }

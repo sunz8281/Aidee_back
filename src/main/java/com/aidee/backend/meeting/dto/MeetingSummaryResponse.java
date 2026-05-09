@@ -8,6 +8,7 @@ public record MeetingSummaryResponse(
         String id,
         String title,
         String status,
+        String summary,
         LocalDateTime meetingAt,
         LocalDateTime createdAt
 ) {
@@ -16,6 +17,7 @@ public record MeetingSummaryResponse(
                 meeting.getId(),
                 meeting.getTitle(),
                 meeting.getStatus().name().toLowerCase(),
+                meeting.getSummary(),
                 meeting.getMeetingAt(),
                 meeting.getCreatedAt()
         );

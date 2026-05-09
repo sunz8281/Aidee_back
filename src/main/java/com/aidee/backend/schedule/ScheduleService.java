@@ -49,6 +49,8 @@ public class ScheduleService {
                 request.allDay(), request.sourceType()
         );
         scheduleRepository.save(schedule);
+        project.touch();
+        projectRepository.save(project);
         return CreateScheduleResponse.from(schedule);
     }
 
@@ -64,14 +66,15 @@ public class ScheduleService {
         }
 
         schedule.update(request.title(), request.startTime(), request.endTime(), request.allDay(), meeting);
+        schedule.getProject().touch();
         return UpdateScheduleResponse.from(schedule);
     }
 
     @Transactional
     public void deleteSchedule(String scheduleId) {
-        if (!scheduleRepository.existsById(scheduleId)) {
-            throw new ResourceNotFoundException("일정을 찾을 수 없습니다: " + scheduleId);
-        }
-        scheduleRepository.deleteById(scheduleId);
+        Schedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new ResourceNotFoundException("일정을 찾을 수 없습니다: " + scheduleId));
+        schedule.getProject().touch();
+        scheduleRepository.delete(schedule);
     }
 }

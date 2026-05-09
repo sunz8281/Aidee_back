@@ -12,7 +12,8 @@ public record ProjectDetailResponse(
         String name,
         List<MeetingSummaryResponse> meetings,
         List<ScheduleResponse> schedules,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
 ) {
     public static ProjectDetailResponse of(Project project,
                                            List<MeetingSummaryResponse> meetings,
@@ -22,7 +23,8 @@ public record ProjectDetailResponse(
                 project.getTitle(),
                 meetings,
                 schedules,
-                project.getCreatedAt()
+                project.getCreatedAt(),
+                project.getUpdatedAt()
         );
     }
 }

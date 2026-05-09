@@ -75,6 +75,8 @@ public class MeetingService {
 
         Meeting meeting = Meeting.create(project, title, meetingAt);
         meetingRepository.save(meeting);
+        project.touch();
+        projectRepository.save(project);
         return MeetingCreateResponse.from(meeting);
     }
 
@@ -100,7 +102,7 @@ public class MeetingService {
                 updateMeetingRecordingFile(meetingId, s3Key);
 
                 // STT 처리
-                String script = sttService.transcribe(tempFile.toString(), progress -> {
+                SttResult sttResult = sttService.transcribe(tempFile.toString(), progress -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("stt_progress")
@@ -112,10 +114,10 @@ public class MeetingService {
 
                 emitter.send(SseEmitter.event()
                         .name("stt_done")
-                        .data("{\"script\":\"" + script.replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
+                        .data("{\"script\":\"" + sttResult.fullText().replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
 
                 // LLM 분석
-                LlmAnalysisResult result = llmService.analyze(script, step -> {
+                LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), step -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("ai_progress")
@@ -125,7 +127,7 @@ public class MeetingService {
                     }
                 });
 
-                saveAnalysisResult(meetingId, result);
+                saveAnalysisResult(meetingId, sttResult, result);
 
                 emitter.send(SseEmitter.event()
                         .name("done")
@@ -154,12 +156,12 @@ public class MeetingService {
     }
 
     @Transactional
-    protected void saveAnalysisResult(String meetingId, LlmAnalysisResult result) {
+    protected void saveAnalysisResult(String meetingId, SttResult sttResult, LlmAnalysisResult result) {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
-        for (LlmAnalysisResult.ScriptData sd : result.scripts()) {
-            scriptRepository.save(ScriptSegment.create(meeting, sd.startTime(), sd.contents()));
+        for (SttResult.Segment seg : sttResult.segments()) {
+            scriptRepository.save(ScriptSegment.create(meeting, seg.startTime(), seg.text()));
         }
 
         for (LlmAnalysisResult.ScheduleData sd : result.schedules()) {
@@ -208,14 +210,15 @@ public class MeetingService {
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
         meeting.updateTitle(request.title());
         meeting.updateMeetingAt(request.meetingAt());
+        meeting.getProject().touch();
     }
 
     @Transactional
     public void deleteMeeting(String meetingId) {
-        if (!meetingRepository.existsById(meetingId)) {
-            throw new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId);
-        }
-        meetingRepository.deleteById(meetingId);
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+        meeting.getProject().touch();
+        meetingRepository.delete(meeting);
     }
 
     @Transactional(readOnly = true)
@@ -234,5 +237,6 @@ public class MeetingService {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
         meeting.updateMemo(memo);
+        meeting.getProject().touch();
     }
 }
