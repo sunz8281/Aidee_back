@@ -25,14 +25,14 @@ public class LlmService {
 
             String prompt = """
                     다음 회의 스크립트를 분석하여 아래 JSON 형식으로만 반환해주세요. 다른 텍스트는 포함하지 마세요.
-                    summary는 반드시 100자 이내로 작성해주세요.
+                    summary는 반드시 300자 이내로 작성해주세요.
 
                     스크립트:
                     %s
 
                     반환 형식:
                     {
-                      "summary": "회의 전체 요약 (100자 이내)",
+                      "summary": "회의 전체 요약 (300자 이내)",
                       "schedules": [
                         {
                           "title": "일정 제목",
