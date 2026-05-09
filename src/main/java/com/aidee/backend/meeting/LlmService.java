@@ -1,48 +1,96 @@
 package com.aidee.backend.meeting;
 
+import com.aidee.backend.ai.GeminiClient;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 @Service
+@RequiredArgsConstructor
 public class LlmService {
 
-    /**
-     * 스크립트를 분석하여 요약/일정/스크립트 세그먼트를 반환한다 (스텁 구현).
-     * stepCallback: 분석 단계 이름 콜백
-     */
+    private final GeminiClient geminiClient;
+    private final ObjectMapper objectMapper;
+
     public LlmAnalysisResult analyze(String script, Consumer<String> stepCallback) {
         try {
             stepCallback.accept("요약 중");
-            Thread.sleep(500);
+
+            String prompt = """
+                    다음 회의 스크립트를 분석하여 아래 JSON 형식으로만 반환해주세요. 다른 텍스트는 포함하지 마세요.
+
+                    스크립트:
+                    %s
+
+                    반환 형식:
+                    {
+                      "summary": "회의 전체 요약 (3-5문장)",
+                      "schedules": [
+                        {
+                          "title": "일정 제목",
+                          "startTime": "2026-05-16T10:00:00",
+                          "endTime": "2026-05-16T11:00:00",
+                          "allDay": false
+                        }
+                      ],
+                      "scripts": [
+                        {"startTime": 0, "contents": "첫 번째 세그먼트"},
+                        {"startTime": 30, "contents": "두 번째 세그먼트"}
+                      ]
+                    }
+                    """.formatted(script);
+
+            String requestBody = """
+                    {
+                      "contents": [{"parts": [{"text": %s}]}]
+                    }
+                    """.formatted(objectMapper.writeValueAsString(prompt));
+
             stepCallback.accept("일정 추출 중");
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            String responseText = geminiClient.generateContent(GeminiClient.TEXT_MODEL, requestBody);
+
+            // 마크다운 코드블록 제거
+            String json = responseText.trim();
+            if (json.startsWith("```")) {
+                json = json.replaceAll("^```[a-z]*\\n?", "").replaceAll("```$", "").trim();
+            }
+
+            return parseResult(json);
+
+        } catch (Exception e) {
+            throw new RuntimeException("LLM 분석 실패", e);
+        }
+    }
+
+    private LlmAnalysisResult parseResult(String json) throws Exception {
+        JsonNode root = objectMapper.readTree(json);
+
+        String summary = root.path("summary").asText();
+
+        List<LlmAnalysisResult.ScheduleData> schedules = new ArrayList<>();
+        for (JsonNode s : root.path("schedules")) {
+            schedules.add(new LlmAnalysisResult.ScheduleData(
+                    s.path("title").asText(),
+                    LocalDateTime.parse(s.path("startTime").asText(), DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    LocalDateTime.parse(s.path("endTime").asText(), DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                    s.path("allDay").asBoolean()
+            ));
         }
 
-        String summary = "회의에서 다음 달 일정 조율 및 프로젝트 진행 상황을 공유하였습니다. "
-                + "다음 주 화요일 오전 10시에 팀 미팅이 예정되었습니다.";
-
-        LocalDateTime now = LocalDateTime.now();
-        List<LlmAnalysisResult.ScheduleData> schedules = List.of(
-                new LlmAnalysisResult.ScheduleData(
-                        "팀 미팅",
-                        now.plusDays(7).withHour(10).withMinute(0).withSecond(0).withNano(0),
-                        now.plusDays(7).withHour(11).withMinute(0).withSecond(0).withNano(0),
-                        false
-                )
-        );
-
-        List<LlmAnalysisResult.ScriptData> scripts = List.of(
-                new LlmAnalysisResult.ScriptData(0, "안녕하세요. 오늘 회의를 시작하겠습니다."),
-                new LlmAnalysisResult.ScriptData(5, "첫 번째 안건은 다음 달 일정 조율입니다."),
-                new LlmAnalysisResult.ScriptData(15, "다음 주 화요일 오전 10시에 팀 미팅을 진행하기로 했습니다."),
-                new LlmAnalysisResult.ScriptData(30, "두 번째 안건은 프로젝트 진행 상황 공유입니다."),
-                new LlmAnalysisResult.ScriptData(45, "이상으로 오늘 회의를 마치겠습니다.")
-        );
+        List<LlmAnalysisResult.ScriptData> scripts = new ArrayList<>();
+        for (JsonNode s : root.path("scripts")) {
+            scripts.add(new LlmAnalysisResult.ScriptData(
+                    s.path("startTime").asInt(),
+                    s.path("contents").asText()
+            ));
+        }
 
         return new LlmAnalysisResult(summary, schedules, scripts);
     }

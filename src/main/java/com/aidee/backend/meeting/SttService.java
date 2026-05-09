@@ -1,29 +1,50 @@
 package com.aidee.backend.meeting;
 
+import com.aidee.backend.ai.GeminiClient;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.function.Consumer;
 
 @Service
+@RequiredArgsConstructor
 public class SttService {
 
-    /**
-     * 오디오 파일을 STT 처리한다 (스텁 구현).
-     * progressCallback: 0~100 진행률 콜백
-     */
+    private final GeminiClient geminiClient;
+
     public String transcribe(String filePath, Consumer<Integer> progressCallback) {
         try {
-            for (int progress : new int[]{0, 25, 50, 75, 100}) {
-                progressCallback.accept(progress);
-                Thread.sleep(300);
-            }
-        } catch (InterruptedException e) {
+            progressCallback.accept(10);
+
+            byte[] audioBytes = Files.readAllBytes(Path.of(filePath));
+            String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
+
+            progressCallback.accept(30);
+
+            String requestBody = """
+                    {
+                      "contents": [{
+                        "parts": [
+                          {"text": "음성 파일을 텍스트로 변환해 주세요. 음성 내용의 텍스트만 반환해 주세요."},
+                          {"inline_data": {"mime_type": "audio/mpeg", "data": "%s"}}
+                        ]
+                      }]
+                    }
+                    """.formatted(base64Audio);
+
+            progressCallback.accept(50);
+            String result = geminiClient.generateContent(GeminiClient.AUDIO_MODEL, requestBody);
+            progressCallback.accept(100);
+
+            return result;
+
+        } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
+            throw new RuntimeException("STT 처리 실패", e);
         }
-        return "안녕하세요. 오늘 회의를 시작하겠습니다. "
-                + "첫 번째 안건은 다음 달 일정 조율입니다. "
-                + "다음 주 화요일 오전 10시에 팀 미팅을 진행하기로 했습니다. "
-                + "두 번째 안건은 프로젝트 진행 상황 공유입니다. "
-                + "이상으로 오늘 회의를 마치겠습니다.";
     }
 }

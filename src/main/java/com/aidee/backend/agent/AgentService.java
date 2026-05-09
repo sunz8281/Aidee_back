@@ -1,14 +1,19 @@
 package com.aidee.backend.agent;
 
 import com.aidee.backend.agent.dto.AgentRequest;
+import com.aidee.backend.agent.dto.MessageDto;
+import com.aidee.backend.ai.GeminiClient;
 import com.aidee.backend.common.ResourceNotFoundException;
 import com.aidee.backend.meeting.MeetingRepository;
 import com.aidee.backend.project.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,6 +24,8 @@ public class AgentService {
 
     private final ProjectRepository projectRepository;
     private final MeetingRepository meetingRepository;
+    private final GeminiClient geminiClient;
+    private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public SseEmitter chat(String projectId, String meetingId, AgentRequest request) {
@@ -33,20 +40,24 @@ public class AgentService {
 
         executor.submit(() -> {
             try {
-                // 스텁: 모의 응답 스트리밍
-                String response = buildMockResponse(request.message());
-                String[] words = response.split(" ");
-                for (String word : words) {
-                    emitter.send(SseEmitter.event()
-                            .name("delta")
-                            .data(Map.of("text", word + " ")));
-                    Thread.sleep(80);
-                }
-                emitter.send(SseEmitter.event()
-                        .name("done")
-                        .data(Map.of()));
+                String requestBody = buildRequestBody(request);
+
+                geminiClient.streamContent(GeminiClient.TEXT_MODEL, requestBody, text -> {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("delta")
+                                .data("{\"text\":\"" + text.replace("\\", "\\\\")
+                                        .replace("\"", "\\\"")
+                                        .replace("\n", "\\n") + "\"}"));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+
+                emitter.send(SseEmitter.event().name("done").data("{}"));
                 emitter.complete();
-            } catch (IOException | InterruptedException e) {
+
+            } catch (Exception e) {
                 emitter.completeWithError(e);
             }
         });
@@ -54,10 +65,35 @@ public class AgentService {
         return emitter;
     }
 
-    private String buildMockResponse(String message) {
-        return "안녕하세요! 질문을 잘 받았습니다. "
-                + "\"" + message + "\"에 대해 도움을 드리겠습니다. "
-                + "현재 AI 에이전트 기능은 준비 중입니다. "
-                + "곧 더 다양한 기능을 제공할 예정입니다.";
+    private String buildRequestBody(AgentRequest request) throws Exception {
+        List<Map<String, Object>> contents = new ArrayList<>();
+
+        // 이전 대화 기록
+        if (request.history() != null) {
+            for (MessageDto msg : request.history()) {
+                contents.add(Map.of(
+                        "role", msg.role().equals("assistant") ? "model" : "user",
+                        "parts", List.of(Map.of("text", msg.content()))
+                ));
+            }
+        }
+
+        // 현재 메시지
+        contents.add(Map.of(
+                "role", "user",
+                "parts", List.of(Map.of("text", request.message()))
+        ));
+
+        Map<String, Object> body = Map.of(
+                "system_instruction", Map.of(
+                        "parts", List.of(Map.of("text",
+                                "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다. " +
+                                "회의 내용 요약, 일정 관리, 메모 작성을 도와줍니다. " +
+                                "한국어로 친절하게 답변해주세요."))
+                ),
+                "contents", contents
+        );
+
+        return objectMapper.writeValueAsString(body);
     }
 }

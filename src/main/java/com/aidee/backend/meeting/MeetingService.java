@@ -81,36 +81,33 @@ public class MeetingService {
             try {
                 // 파일 저장
                 String filename = "audio/" + UUID.randomUUID() + "_" + audioFile.getOriginalFilename();
-                Path audioPath = Paths.get(uploadDir, filename);
+                Path audioPath = Paths.get(uploadDir).toAbsolutePath().resolve(filename);
                 Files.createDirectories(audioPath.getParent());
-                audioFile.transferTo(audioPath.toFile());
+                Files.copy(audioFile.getInputStream(), audioPath);
 
                 updateMeetingRecordingFile(meetingId, filename);
 
                 // STT 처리
-                String[] scriptHolder = new String[1];
-                sttService.transcribe(audioPath.toString(), progress -> {
+                String script = sttService.transcribe(audioPath.toString(), progress -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("stt_progress")
-                                .data(Map.of("progress", progress)));
+                                .data("{\"progress\":" + progress + "}"));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
                 });
 
-                String script = sttService.transcribe(audioPath.toString(), progress -> {});
-
                 emitter.send(SseEmitter.event()
                         .name("stt_done")
-                        .data(Map.of("script", script)));
+                        .data("{\"script\":\"" + script.replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
 
                 // LLM 분석
                 LlmAnalysisResult result = llmService.analyze(script, step -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("ai_progress")
-                                .data(Map.of("step", step)));
+                                .data("{\"step\":\"" + step + "\"}"));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -121,7 +118,7 @@ public class MeetingService {
 
                 emitter.send(SseEmitter.event()
                         .name("done")
-                        .data(Map.of("meetingId", meetingId)));
+                        .data("{\"meetingId\":\"" + meetingId + "\"}"));
                 emitter.complete();
 
             } catch (Exception e) {
@@ -137,6 +134,7 @@ public class MeetingService {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
         meeting.startProcessing(filename);
+        meetingRepository.save(meeting);
     }
 
     @Transactional
@@ -160,6 +158,7 @@ public class MeetingService {
         }
 
         meeting.completeProcessing(result.summary());
+        meetingRepository.save(meeting);
     }
 
     @Transactional(readOnly = true)
