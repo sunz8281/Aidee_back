@@ -20,10 +20,8 @@ public record MeetingDetailResponse(
 ) {
     public static MeetingDetailResponse of(Meeting meeting,
                                            List<ScriptSegmentResponse> scripts,
-                                           List<ScheduleResponse> schedules) {
-        String audioUrl = meeting.getRecordingFile() != null
-                ? "/uploads/" + meeting.getRecordingFile()
-                : null;
+                                           List<ScheduleResponse> schedules,
+                                           String audioUrl) {
         return new MeetingDetailResponse(
                 meeting.getId(),
                 meeting.getTitle(),

@@ -14,15 +14,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,9 +42,11 @@ public class MeetingService {
     private final ScriptRepository scriptRepository;
     private final SttService sttService;
     private final LlmService llmService;
+    private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
 
-    @Value("${app.upload.dir:./uploads}")
-    private String uploadDir;
+    @Value("${aws.s3.bucket}")
+    private String bucket;
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -72,23 +79,28 @@ public class MeetingService {
     }
 
     public SseEmitter processAudio(String meetingId, MultipartFile audioFile) {
-        Meeting meeting = meetingRepository.findById(meetingId)
+        meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
         SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
 
         executor.submit(() -> {
+            Path tempFile = null;
             try {
-                // 파일 저장
-                String filename = "audio/" + UUID.randomUUID() + "_" + audioFile.getOriginalFilename();
-                Path audioPath = Paths.get(uploadDir).toAbsolutePath().resolve(filename);
-                Files.createDirectories(audioPath.getParent());
-                Files.copy(audioFile.getInputStream(), audioPath);
+                // 임시 파일로 저장
+                String s3Key = "audio/" + UUID.randomUUID() + "_" + audioFile.getOriginalFilename();
+                tempFile = Files.createTempFile("audio_", "_" + audioFile.getOriginalFilename());
+                Files.copy(audioFile.getInputStream(), tempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
-                updateMeetingRecordingFile(meetingId, filename);
+                // S3 업로드
+                s3Client.putObject(
+                        PutObjectRequest.builder().bucket(bucket).key(s3Key).build(),
+                        RequestBody.fromFile(tempFile)
+                );
+                updateMeetingRecordingFile(meetingId, s3Key);
 
                 // STT 처리
-                String script = sttService.transcribe(audioPath.toString(), progress -> {
+                String script = sttService.transcribe(tempFile.toString(), progress -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("stt_progress")
@@ -113,7 +125,6 @@ public class MeetingService {
                     }
                 });
 
-                // 결과 저장
                 saveAnalysisResult(meetingId, result);
 
                 emitter.send(SseEmitter.event()
@@ -123,6 +134,11 @@ public class MeetingService {
 
             } catch (Exception e) {
                 emitter.completeWithError(e);
+            } finally {
+                // 임시 파일 삭제
+                if (tempFile != null) {
+                    try { Files.deleteIfExists(tempFile); } catch (IOException ignored) {}
+                }
             }
         });
 
@@ -130,10 +146,10 @@ public class MeetingService {
     }
 
     @Transactional
-    protected void updateMeetingRecordingFile(String meetingId, String filename) {
+    protected void updateMeetingRecordingFile(String meetingId, String s3Key) {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
-        meeting.startProcessing(filename);
+        meeting.startProcessing(s3Key);
         meetingRepository.save(meeting);
     }
 
@@ -142,19 +158,15 @@ public class MeetingService {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
-        // 스크립트 세그먼트 저장
         for (LlmAnalysisResult.ScriptData sd : result.scripts()) {
-            ScriptSegment segment = ScriptSegment.create(meeting, sd.startTime(), sd.contents());
-            scriptRepository.save(segment);
+            scriptRepository.save(ScriptSegment.create(meeting, sd.startTime(), sd.contents()));
         }
 
-        // 일정 저장
         for (LlmAnalysisResult.ScheduleData sd : result.schedules()) {
-            Schedule schedule = Schedule.create(
+            scheduleRepository.save(Schedule.create(
                     meeting.getProject(), meeting,
                     sd.title(), sd.startTime(), sd.endTime(), sd.allDay(), "ai"
-            );
-            scheduleRepository.save(schedule);
+            ));
         }
 
         meeting.completeProcessing(result.summary());
@@ -174,7 +186,20 @@ public class MeetingService {
                 .findByMeetingId(meetingId)
                 .stream().map(com.aidee.backend.schedule.dto.ScheduleResponse::from).toList();
 
-        return MeetingDetailResponse.of(meeting, scripts, schedules);
+        String audioUrl = generateAudioUrl(meeting.getRecordingFile());
+        return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl);
+    }
+
+    private String generateAudioUrl(String s3Key) {
+        if (s3Key == null) return null;
+        return s3Presigner.presignGetObject(GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofHours(1))
+                .getObjectRequest(GetObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(s3Key)
+                        .build())
+                .build())
+                .url().toString();
     }
 
     @Transactional
