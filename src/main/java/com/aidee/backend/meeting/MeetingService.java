@@ -183,8 +183,8 @@ public class MeetingService {
     private void sendProgress(SseEmitter emitter, String step, String message) {
         try {
             emitter.send(SseEmitter.event()
-                    .name("progress")
-                    .data("{\"step\":\"" + step + "\",\"message\":\"" + message + "\"}"));
+                    .name(step)
+                    .data("{\"message\":\"" + message.replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
