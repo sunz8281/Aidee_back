@@ -56,7 +56,14 @@ public class ScheduleService {
     public UpdateScheduleResponse updateSchedule(String scheduleId, UpdateScheduleRequest request) {
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new ResourceNotFoundException("일정을 찾을 수 없습니다: " + scheduleId));
-        schedule.update(request.title(), request.startTime(), request.endTime(), request.allDay());
+
+        Meeting meeting = null;
+        if (request.sourceMeetingId() != null) {
+            meeting = meetingRepository.findById(request.sourceMeetingId())
+                    .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + request.sourceMeetingId()));
+        }
+
+        schedule.update(request.title(), request.startTime(), request.endTime(), request.allDay(), meeting);
         return UpdateScheduleResponse.from(schedule);
     }
 

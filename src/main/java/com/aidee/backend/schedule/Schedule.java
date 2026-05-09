@@ -59,10 +59,11 @@ public class Schedule {
         return s;
     }
 
-    public void update(String title, LocalDateTime startTime, LocalDateTime endTime, Boolean allDay) {
+    public void update(String title, LocalDateTime startTime, LocalDateTime endTime, Boolean allDay, Meeting meeting) {
         if (title != null) this.title = title;
         if (startTime != null) this.startTime = startTime;
         if (endTime != null) this.endTime = endTime;
         if (allDay != null) this.allDay = allDay;
+        if (meeting != null) this.meeting = meeting;
     }
 }
