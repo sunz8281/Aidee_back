@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -45,10 +46,17 @@ public class ProjectService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
 
-        List<MeetingSummaryResponse> meetings = meetingRepository.findByProjectId(projectId)
+        List<MeetingSummaryResponse> meetings = meetingRepository
+                .findTop5ByProjectIdOrderByCreatedAtDesc(projectId)
                 .stream().map(MeetingSummaryResponse::from).toList();
 
-        List<ScheduleResponse> schedules = scheduleRepository.findByProjectId(projectId)
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime endOfMonth = now.withDayOfMonth(now.toLocalDate().lengthOfMonth())
+                .withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+
+        List<ScheduleResponse> schedules = scheduleRepository
+                .findByProjectIdAndStartTimeBetween(projectId, startOfMonth, endOfMonth)
                 .stream().map(ScheduleResponse::from).toList();
 
         return ProjectDetailResponse.of(project, meetings, schedules);

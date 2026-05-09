@@ -18,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,8 +63,8 @@ class ProjectServiceTest {
     void 프로젝트_단건_조회_성공() {
         Project project = Project.create();
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(meetingRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(scheduleRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(meetingRepository.findTop5ByProjectIdOrderByCreatedAtDesc(project.getId())).thenReturn(List.of());
+        when(scheduleRepository.findByProjectIdAndStartTimeBetween(eq(project.getId()), any(), any())).thenReturn(List.of());
 
         ProjectDetailResponse result = projectService.getProject(project.getId());
 
