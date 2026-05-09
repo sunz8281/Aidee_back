@@ -105,8 +105,15 @@ public class MeetingService {
 
                 // STT 처리
                 sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다");
-                SttResult sttResult = sttService.transcribe(tempFile.toString(), chunk ->
-                        sendProgress(emitter, "stt", chunk));
+                SttResult sttResult = sttService.transcribe(tempFile.toString(), segment -> {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("stt")
+                                .data("{\"startTime\":" + segment.startTime() + ",\"text\":\"" + segment.text().replace("\"", "\\\"") + "\"}"));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
 
                 sendProgress(emitter, "stt_done", "음성 변환이 완료되었습니다");
 
