@@ -28,8 +28,7 @@ public class ProjectService {
                 .map(project -> ProjectSummaryResponse.of(
                         project,
                         meetingRepository.countByProjectId(project.getId()),
-                        scheduleRepository.countByProjectId(project.getId()),
-                        meetingRepository.countByProjectIdAndMemoIsNotNullAndMemoNot(project.getId(), "")
+                        scheduleRepository.countByProjectId(project.getId())
                 ))
                 .toList();
     }

@@ -38,7 +38,7 @@ class ProjectControllerTest {
     void 프로젝트_목록_조회_성공() throws Exception {
         when(projectService.getProjects()).thenReturn(
                 List.of(new ProjectSummaryResponse("id-1", "새 프로젝트",
-                        LocalDateTime.now(), LocalDateTime.now(), 2L, 3L, 1L))
+                        LocalDateTime.now(), LocalDateTime.now(), 2L, 3L))
         );
 
         mockMvc.perform(get("/projects"))
@@ -47,8 +47,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.items[0].id").value("id-1"))
                 .andExpect(jsonPath("$.items[0].name").value("새 프로젝트"))
                 .andExpect(jsonPath("$.items[0].meetingsCount").value(2))
-                .andExpect(jsonPath("$.items[0].schedulesCount").value(3))
-                .andExpect(jsonPath("$.items[0].memosCount").value(1));
+                .andExpect(jsonPath("$.items[0].schedulesCount").value(3));
     }
 
     @Test

@@ -10,21 +10,18 @@ public record ProjectSummaryResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         long meetingsCount,
-        long schedulesCount,
-        long memosCount
+        long schedulesCount
 ) {
     public static ProjectSummaryResponse of(Project project,
                                             long meetingsCount,
-                                            long schedulesCount,
-                                            long memosCount) {
+                                            long schedulesCount) {
         return new ProjectSummaryResponse(
                 project.getId(),
                 project.getTitle(),
                 project.getCreatedAt(),
                 project.getUpdatedAt(),
                 meetingsCount,
-                schedulesCount,
-                memosCount
+                schedulesCount
         );
     }
 }
