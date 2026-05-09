@@ -7,13 +7,24 @@ import java.time.LocalDateTime;
 public record ProjectSummaryResponse(
         String id,
         String name,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt,
+        long meetingsCount,
+        long schedulesCount,
+        long memosCount
 ) {
-    public static ProjectSummaryResponse from(Project project) {
+    public static ProjectSummaryResponse of(Project project,
+                                            long meetingsCount,
+                                            long schedulesCount,
+                                            long memosCount) {
         return new ProjectSummaryResponse(
                 project.getId(),
                 project.getTitle(),
-                project.getCreatedAt()
+                project.getCreatedAt(),
+                project.getUpdatedAt(),
+                meetingsCount,
+                schedulesCount,
+                memosCount
         );
     }
 }

@@ -37,11 +37,17 @@ class ProjectServiceTest {
     void 프로젝트_목록_조회_성공() {
         Project project = Project.create();
         when(projectRepository.findAll()).thenReturn(List.of(project));
+        when(meetingRepository.countByProjectId(project.getId())).thenReturn(2L);
+        when(scheduleRepository.countByProjectId(project.getId())).thenReturn(3L);
+        when(meetingRepository.countByProjectIdAndMemoIsNotNullAndMemoNot(project.getId(), "")).thenReturn(1L);
 
         List<ProjectSummaryResponse> result = projectService.getProjects();
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).name()).isEqualTo("새 프로젝트");
+        assertThat(result.get(0).meetingsCount()).isEqualTo(2L);
+        assertThat(result.get(0).schedulesCount()).isEqualTo(3L);
+        assertThat(result.get(0).memosCount()).isEqualTo(1L);
     }
 
     @Test

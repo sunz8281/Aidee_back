@@ -7,6 +7,7 @@ import java.util.List;
 
 public interface ScheduleRepository extends JpaRepository<Schedule, String> {
     List<Schedule> findByProjectId(String projectId);
+    long countByProjectId(String projectId);
     List<Schedule> findByProjectIdAndStartTimeBetween(String projectId,
                                                        LocalDateTime startOfMonth,
                                                        LocalDateTime endOfMonth);

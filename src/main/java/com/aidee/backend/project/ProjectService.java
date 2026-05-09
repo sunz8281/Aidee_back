@@ -25,7 +25,12 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public List<ProjectSummaryResponse> getProjects() {
         return projectRepository.findAll().stream()
-                .map(ProjectSummaryResponse::from)
+                .map(project -> ProjectSummaryResponse.of(
+                        project,
+                        meetingRepository.countByProjectId(project.getId()),
+                        scheduleRepository.countByProjectId(project.getId()),
+                        meetingRepository.countByProjectIdAndMemoIsNotNullAndMemoNot(project.getId(), "")
+                ))
                 .toList();
     }
 
