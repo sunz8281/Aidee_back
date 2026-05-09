@@ -21,14 +21,10 @@ public class SttService {
     private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
 
-    public SttResult transcribe(String filePath, Consumer<Integer> progressCallback) {
+    public SttResult transcribe(String filePath, Consumer<String> onChunk) {
         try {
-            progressCallback.accept(10);
-
             byte[] audioBytes = Files.readAllBytes(Path.of(filePath));
             String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
-
-            progressCallback.accept(30);
 
             String prompt = """
                     음성 파일을 텍스트로 변환해주세요. 아래 JSON 형식으로만 반환하고 다른 텍스트는 포함하지 마세요.
@@ -53,13 +49,13 @@ public class SttService {
                     }
                     """.formatted(objectMapper.writeValueAsString(prompt), base64Audio);
 
-            progressCallback.accept(50);
-            String raw = geminiClient.generateContent(GeminiClient.AUDIO_MODEL, requestBody);
-            progressCallback.accept(90);
+            StringBuilder accumulated = new StringBuilder();
+            geminiClient.streamContent(GeminiClient.AUDIO_MODEL, requestBody, chunk -> {
+                onChunk.accept(chunk);
+                accumulated.append(chunk);
+            });
 
-            SttResult result = parseResult(raw);
-            progressCallback.accept(100);
-            return result;
+            return parseResult(accumulated.toString());
 
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();

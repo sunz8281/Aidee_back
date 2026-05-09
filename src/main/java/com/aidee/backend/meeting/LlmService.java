@@ -19,10 +19,8 @@ public class LlmService {
     private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
 
-    public LlmAnalysisResult analyze(String script, Consumer<String> stepCallback) {
+    public LlmAnalysisResult analyze(String script, Consumer<String> onChunk) {
         try {
-            stepCallback.accept("요약 중");
-
             String prompt = """
                     다음 회의 스크립트를 분석하여 아래 JSON 형식으로만 반환해주세요. 다른 텍스트는 포함하지 마세요.
                     summary는 반드시 300자 이내로 작성해주세요.
@@ -50,10 +48,13 @@ public class LlmService {
                     }
                     """.formatted(objectMapper.writeValueAsString(prompt));
 
-            stepCallback.accept("일정 추출 중");
-            String responseText = geminiClient.generateContent(GeminiClient.TEXT_MODEL, requestBody);
+            StringBuilder accumulated = new StringBuilder();
+            geminiClient.streamContent(GeminiClient.TEXT_MODEL, requestBody, chunk -> {
+                onChunk.accept(chunk);
+                accumulated.append(chunk);
+            });
 
-            String json = responseText.trim();
+            String json = accumulated.toString().trim();
             if (json.startsWith("```")) {
                 json = json.replaceAll("^```[a-z]*\\n?", "").replaceAll("```$", "").trim();
             }

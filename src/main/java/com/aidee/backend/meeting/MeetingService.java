@@ -105,14 +105,15 @@ public class MeetingService {
 
                 // STT 처리
                 sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다");
-                SttResult sttResult = sttService.transcribe(tempFile.toString(), progress ->
-                        sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다 (" + progress + "%)"));
+                SttResult sttResult = sttService.transcribe(tempFile.toString(), chunk ->
+                        sendProgress(emitter, "stt", chunk));
 
                 sendProgress(emitter, "stt_done", "음성 변환이 완료되었습니다");
 
                 // LLM 분석
-                LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), step ->
-                        sendProgress(emitter, "analyzing", step));
+                sendProgress(emitter, "analyzing", "회의 내용을 분석하는 중입니다");
+                LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), chunk ->
+                        sendProgress(emitter, "analyzing", chunk));
 
                 saveAnalysisResult(meetingId, sttResult, result);
 
