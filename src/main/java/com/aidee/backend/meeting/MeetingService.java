@@ -238,5 +238,6 @@ public class MeetingService {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
         meeting.updateMemo(memo);
+        meeting.getProject().touch();
     }
 }
