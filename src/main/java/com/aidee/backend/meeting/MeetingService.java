@@ -162,7 +162,8 @@ public class MeetingService {
             float[] embedding = embeddingService.embed(seg.text());
             scriptEmbeddingRepository.save(ScriptEmbedding.create(
                     script.getId(), meeting.getId(), meeting.getProject().getId(),
-                    seg.text(), embedding));
+                    meeting.getTitle(), meeting.getMeetingAt(),
+                    seg.startTime(), seg.text(), embedding));
         }
 
         for (LlmAnalysisResult.ScheduleData sd : result.schedules()) {

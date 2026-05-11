@@ -4,6 +4,7 @@ import com.aidee.backend.common.VectorConverter;
 import jakarta.persistence.*;
 import lombok.Getter;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -23,6 +24,15 @@ public class ScriptEmbedding {
     @Column(name = "project_id", nullable = false)
     private String projectId;
 
+    @Column(name = "meeting_title", nullable = false)
+    private String meetingTitle;
+
+    @Column(name = "meeting_at", nullable = false)
+    private LocalDateTime meetingAt;
+
+    @Column(name = "start_time", nullable = false)
+    private int startTime;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String text;
 
@@ -33,12 +43,16 @@ public class ScriptEmbedding {
     protected ScriptEmbedding() {}
 
     public static ScriptEmbedding create(String scriptId, String meetingId, String projectId,
-                                          String text, float[] embedding) {
+                                          String meetingTitle, LocalDateTime meetingAt,
+                                          int startTime, String text, float[] embedding) {
         ScriptEmbedding e = new ScriptEmbedding();
         e.id = UUID.randomUUID().toString();
         e.scriptId = scriptId;
         e.meetingId = meetingId;
         e.projectId = projectId;
+        e.meetingTitle = meetingTitle;
+        e.meetingAt = meetingAt;
+        e.startTime = startTime;
         e.text = text;
         e.embedding = embedding;
         return e;

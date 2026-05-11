@@ -59,7 +59,11 @@ public class AgentService {
                         : scriptEmbeddingRepository.findSimilarByProject(projectId, queryVector, TOP_K);
 
                 String context = relevant.stream()
-                        .map(ScriptEmbedding::getText)
+                        .map(e -> String.format("[회의: %s | 날짜: %s | %d초] %s",
+                                e.getMeetingTitle(),
+                                e.getMeetingAt().toLocalDate(),
+                                e.getStartTime(),
+                                e.getText()))
                         .collect(Collectors.joining("\n"));
 
                 String requestBody = buildRequestBody(request, context);
