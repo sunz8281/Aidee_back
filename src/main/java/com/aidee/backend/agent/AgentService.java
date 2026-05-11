@@ -51,20 +51,26 @@ public class AgentService {
         executor.submit(() -> {
             try {
                 // 질문 임베딩 → 유사 스크립트 검색
-                float[] queryEmbedding = embeddingService.embed(request.message());
-                String queryVector = vectorConverter.convertToDatabaseColumn(queryEmbedding);
+                String context = "";
+                try {
+                    float[] queryEmbedding = embeddingService.embed(request.message());
+                    String queryVector = vectorConverter.convertToDatabaseColumn(queryEmbedding);
 
-                List<ScriptEmbedding> relevant = meetingId != null
-                        ? scriptEmbeddingRepository.findSimilarByMeeting(meetingId, queryVector, TOP_K)
-                        : scriptEmbeddingRepository.findSimilarByProject(projectId, queryVector, TOP_K);
+                    List<ScriptEmbedding> relevant = meetingId != null
+                            ? scriptEmbeddingRepository.findSimilarByMeeting(meetingId, queryVector, TOP_K)
+                            : scriptEmbeddingRepository.findSimilarByProject(projectId, queryVector, TOP_K);
 
-                String context = relevant.stream()
-                        .map(e -> String.format("[회의: %s | 날짜: %s | %d초] %s",
-                                e.getMeetingTitle(),
-                                e.getMeetingAt().toLocalDate(),
-                                e.getStartTime(),
-                                e.getText()))
-                        .collect(Collectors.joining("\n"));
+                    context = relevant.stream()
+                            .map(e -> String.format("[회의: %s | 날짜: %s | %d초] %s",
+                                    e.getMeetingTitle(),
+                                    e.getMeetingAt().toLocalDate(),
+                                    e.getStartTime(),
+                                    e.getText()))
+                            .collect(Collectors.joining("\n"));
+                } catch (Exception ragEx) {
+                    // RAG 실패 시 컨텍스트 없이 응답
+                    System.err.println("RAG 검색 실패: " + ragEx.getMessage());
+                }
 
                 String requestBody = buildRequestBody(request, context);
 

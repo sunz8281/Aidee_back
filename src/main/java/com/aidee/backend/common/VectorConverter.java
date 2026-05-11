@@ -26,7 +26,8 @@ public class VectorConverter implements AttributeConverter<float[], String> {
     @Override
     public float[] convertToEntityAttribute(String dbData) {
         if (dbData == null) return null;
-        String trimmed = dbData.replace("[", "").replace("]", "");
+        String trimmed = dbData.replace("[", "").replace("]", "").trim();
+        if (trimmed.isEmpty()) return new float[0];
         String[] parts = trimmed.split(",");
         float[] result = new float[parts.length];
         for (int i = 0; i < parts.length; i++) {
