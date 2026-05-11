@@ -1,19 +1,16 @@
 package com.aidee.backend.meeting;
 
+import com.aidee.backend.ai.GeminiClient;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -21,58 +18,81 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class SttService {
 
+    private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-
-    @Value("${clova.speech.invoke-url}")
-    private String invokeUrl;
-
-    @Value("${clova.speech.secret-key}")
-    private String secretKey;
 
     public SttResult transcribe(String filePath, Consumer<SttResult.Segment> onSegment) {
         try {
             byte[] audioBytes = Files.readAllBytes(Path.of(filePath));
+            String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(invokeUrl + "/recognizer/upload"))
-                    .header("X-CLOVASPEECH-API-KEY", secretKey)
-                    .header("Content-Type", "application/octet-stream")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(audioBytes))
-                    .build();
+            String prompt = """
+                    음성 파일을 텍스트로 변환해주세요.
+                    각 발화 세그먼트를 아래 형식의 JSON으로 한 줄에 하나씩 출력하세요. 다른 텍스트나 설명은 포함하지 마세요.
+                    startTime은 해당 발화가 시작되는 시각(초 단위 정수)입니다.
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                    {"startTime": 0, "text": "첫 번째 발화 내용"}
+                    {"startTime": 15, "text": "두 번째 발화 내용"}
+                    """;
 
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("Clova Speech API 오류: " + response.statusCode() + " " + response.body());
+            String requestBody = """
+                    {
+                      "contents": [{
+                        "parts": [
+                          {"text": %s},
+                          {"inline_data": {"mime_type": "audio/mpeg", "data": "%s"}}
+                        ]
+                      }]
+                    }
+                    """.formatted(objectMapper.writeValueAsString(prompt), base64Audio);
+
+            List<SttResult.Segment> segments = new ArrayList<>();
+            StringBuilder lineBuffer = new StringBuilder();
+
+            geminiClient.streamContent(GeminiClient.AUDIO_MODEL, requestBody, chunk -> {
+                lineBuffer.append(chunk);
+                int newlineIdx;
+                while ((newlineIdx = lineBuffer.indexOf("\n")) != -1) {
+                    String line = lineBuffer.substring(0, newlineIdx).trim();
+                    lineBuffer.delete(0, newlineIdx + 1);
+                    if (line.isEmpty()) continue;
+                    try {
+                        JsonNode node = objectMapper.readTree(line);
+                        SttResult.Segment seg = new SttResult.Segment(
+                                node.path("startTime").asInt(),
+                                node.path("text").asText()
+                        );
+                        segments.add(seg);
+                        onSegment.accept(seg);
+                    } catch (Exception ignored) {}
+                }
+            });
+
+            // 버퍼에 남은 마지막 줄 처리
+            String remaining = lineBuffer.toString().trim();
+            if (!remaining.isEmpty()) {
+                try {
+                    JsonNode node = objectMapper.readTree(remaining);
+                    SttResult.Segment seg = new SttResult.Segment(
+                            node.path("startTime").asInt(),
+                            node.path("text").asText()
+                    );
+                    segments.add(seg);
+                    onSegment.accept(seg);
+                } catch (Exception ignored) {}
             }
 
-            return parseResult(response.body(), onSegment);
+            StringBuilder fullText = new StringBuilder();
+            for (SttResult.Segment seg : segments) {
+                if (!fullText.isEmpty()) fullText.append(" ");
+                fullText.append(seg.text());
+            }
+
+            return new SttResult(fullText.toString(), segments);
 
         } catch (IOException | InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("STT 처리 실패", e);
-        } catch (Exception e) {
-            throw new RuntimeException("STT 파싱 실패", e);
         }
-    }
-
-    private SttResult parseResult(String responseBody, Consumer<SttResult.Segment> onSegment) throws Exception {
-        JsonNode root = objectMapper.readTree(responseBody);
-
-        List<SttResult.Segment> segments = new ArrayList<>();
-        StringBuilder fullText = new StringBuilder();
-
-        for (JsonNode s : root.path("segments")) {
-            int startTime = (int) (s.path("start").asLong() / 1000); // ms → 초
-            String text = s.path("text").asText();
-            SttResult.Segment seg = new SttResult.Segment(startTime, text);
-            segments.add(seg);
-            onSegment.accept(seg);
-            if (!fullText.isEmpty()) fullText.append(" ");
-            fullText.append(text);
-        }
-
-        return new SttResult(fullText.toString(), segments);
     }
 }

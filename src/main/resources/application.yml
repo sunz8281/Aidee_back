@@ -31,11 +31,6 @@ app:
 gemini:
   api-key: ${GEMINI_API_KEY}
 
-clova:
-  speech:
-    invoke-url: ${CLOVA_INVOKE_URL}
-    secret-key: ${CLOVA_SECRET_KEY}
-
 aws:
   access-key: ${AWS_ACCESS_KEY}
   secret-key: ${AWS_SECRET_KEY}
