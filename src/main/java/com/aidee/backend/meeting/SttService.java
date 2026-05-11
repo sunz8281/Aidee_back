@@ -21,7 +21,7 @@ public class SttService {
     private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
 
-    public SttResult transcribe(String filePath, Consumer<SttResult.Segment> onSegment) {
+    public SttResult transcribe(String filePath, Consumer<String> onChunk, Consumer<SttResult.Segment> onSegment) {
         try {
             byte[] audioBytes = Files.readAllBytes(Path.of(filePath));
             String base64Audio = Base64.getEncoder().encodeToString(audioBytes);
@@ -50,6 +50,7 @@ public class SttService {
             StringBuilder lineBuffer = new StringBuilder();
 
             geminiClient.streamContent(GeminiClient.AUDIO_MODEL, requestBody, chunk -> {
+                onChunk.accept(chunk);  // 청크 즉시 프론트로 전달
                 lineBuffer.append(chunk);
                 int newlineIdx;
                 while ((newlineIdx = lineBuffer.indexOf("\n")) != -1) {
