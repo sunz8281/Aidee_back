@@ -70,8 +70,9 @@ public class Meeting {
         this.status = MeetingStatus.PROCESSING;
     }
 
-    public void completeProcessing(String summary) {
+    public void completeProcessing(String summary, String memo) {
         this.summary = summary;
+        if (memo != null && !memo.isBlank()) this.memo = memo;
         this.status = MeetingStatus.DONE;
     }
 

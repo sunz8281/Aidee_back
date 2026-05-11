@@ -5,6 +5,7 @@ import java.util.List;
 
 public record LlmAnalysisResult(
         String summary,
+        String memo,
         List<ScheduleData> schedules
 ) {
     public record ScheduleData(

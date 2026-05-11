@@ -162,7 +162,7 @@ public class MeetingService {
             ));
         }
 
-        meeting.completeProcessing(result.summary());
+        meeting.completeProcessing(result.summary(), result.memo());
         meetingRepository.save(meeting);
     }
 

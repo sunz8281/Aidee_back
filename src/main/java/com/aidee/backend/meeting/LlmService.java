@@ -31,6 +31,7 @@ public class LlmService {
                     반환 형식:
                     {
                       "summary": "회의 전체 요약 (300자 이내)",
+                      "memo": "회의에서 논의된 주요 액션 아이템 및 결정 사항 (불릿 포인트 형식, 300자 이내)",
                       "schedules": [
                         {
                           "title": "일정 제목",
@@ -70,6 +71,7 @@ public class LlmService {
         JsonNode root = objectMapper.readTree(json);
 
         String summary = root.path("summary").asText();
+        String memo = root.path("memo").asText(null);
 
         List<LlmAnalysisResult.ScheduleData> schedules = new ArrayList<>();
         for (JsonNode s : root.path("schedules")) {
@@ -81,6 +83,6 @@ public class LlmService {
             ));
         }
 
-        return new LlmAnalysisResult(summary, schedules);
+        return new LlmAnalysisResult(summary, memo, schedules);
     }
 }
