@@ -4,6 +4,10 @@ import com.aidee.backend.agent.dto.AgentRequest;
 import com.aidee.backend.agent.dto.MessageDto;
 import com.aidee.backend.ai.GeminiClient;
 import com.aidee.backend.common.ResourceNotFoundException;
+import com.aidee.backend.common.VectorConverter;
+import com.aidee.backend.embedding.EmbeddingService;
+import com.aidee.backend.embedding.ScriptEmbedding;
+import com.aidee.backend.embedding.ScriptEmbeddingRepository;
 import com.aidee.backend.meeting.MeetingRepository;
 import com.aidee.backend.project.ProjectRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,15 +21,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class AgentService {
 
+    private static final int TOP_K = 5;
+
     private final ProjectRepository projectRepository;
     private final MeetingRepository meetingRepository;
+    private final ScriptEmbeddingRepository scriptEmbeddingRepository;
+    private final EmbeddingService embeddingService;
     private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
+    private final VectorConverter vectorConverter;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public SseEmitter chat(String projectId, String meetingId, AgentRequest request) {
@@ -40,7 +50,19 @@ public class AgentService {
 
         executor.submit(() -> {
             try {
-                String requestBody = buildRequestBody(request);
+                // 질문 임베딩 → 유사 스크립트 검색
+                float[] queryEmbedding = embeddingService.embed(request.message());
+                String queryVector = vectorConverter.convertToDatabaseColumn(queryEmbedding);
+
+                List<ScriptEmbedding> relevant = meetingId != null
+                        ? scriptEmbeddingRepository.findSimilarByMeeting(meetingId, queryVector, TOP_K)
+                        : scriptEmbeddingRepository.findSimilarByProject(projectId, queryVector, TOP_K);
+
+                String context = relevant.stream()
+                        .map(ScriptEmbedding::getText)
+                        .collect(Collectors.joining("\n"));
+
+                String requestBody = buildRequestBody(request, context);
 
                 geminiClient.streamContent(GeminiClient.TEXT_MODEL, requestBody, text -> {
                     try {
@@ -65,10 +87,9 @@ public class AgentService {
         return emitter;
     }
 
-    private String buildRequestBody(AgentRequest request) throws Exception {
+    private String buildRequestBody(AgentRequest request, String context) throws Exception {
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // 이전 대화 기록
         if (request.history() != null) {
             for (MessageDto msg : request.history()) {
                 contents.add(Map.of(
@@ -78,18 +99,22 @@ public class AgentService {
             }
         }
 
-        // 현재 메시지
         contents.add(Map.of(
                 "role", "user",
                 "parts", List.of(Map.of("text", request.message()))
         ));
 
+        String systemPrompt = "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다. " +
+                "회의 내용 요약, 일정 관리, 메모 작성을 도와줍니다. " +
+                "한국어로 친절하게 답변해주세요.";
+
+        if (!context.isBlank()) {
+            systemPrompt += "\n\n[관련 회의 내용]\n" + context;
+        }
+
         Map<String, Object> body = Map.of(
                 "system_instruction", Map.of(
-                        "parts", List.of(Map.of("text",
-                                "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다. " +
-                                "회의 내용 요약, 일정 관리, 메모 작성을 도와줍니다. " +
-                                "한국어로 친절하게 답변해주세요."))
+                        "parts", List.of(Map.of("text", systemPrompt))
                 ),
                 "contents", contents
         );

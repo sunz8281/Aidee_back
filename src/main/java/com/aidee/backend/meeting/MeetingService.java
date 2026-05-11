@@ -6,6 +6,9 @@ import com.aidee.backend.project.Project;
 import com.aidee.backend.project.ProjectRepository;
 import com.aidee.backend.schedule.Schedule;
 import com.aidee.backend.schedule.ScheduleRepository;
+import com.aidee.backend.embedding.EmbeddingService;
+import com.aidee.backend.embedding.ScriptEmbedding;
+import com.aidee.backend.embedding.ScriptEmbeddingRepository;
 import com.aidee.backend.script.ScriptRepository;
 import com.aidee.backend.script.ScriptSegment;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +43,8 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final ScheduleRepository scheduleRepository;
     private final ScriptRepository scriptRepository;
+    private final ScriptEmbeddingRepository scriptEmbeddingRepository;
+    private final EmbeddingService embeddingService;
     private final SttService sttService;
     private final LlmService llmService;
     private final S3Client s3Client;
@@ -152,7 +157,12 @@ public class MeetingService {
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
         for (SttResult.Segment seg : sttResult.segments()) {
-            scriptRepository.save(ScriptSegment.create(meeting, seg.startTime(), seg.text()));
+            ScriptSegment script = scriptRepository.save(
+                    ScriptSegment.create(meeting, seg.startTime(), seg.text()));
+            float[] embedding = embeddingService.embed(seg.text());
+            scriptEmbeddingRepository.save(ScriptEmbedding.create(
+                    script.getId(), meeting.getId(), meeting.getProject().getId(),
+                    seg.text(), embedding));
         }
 
         for (LlmAnalysisResult.ScheduleData sd : result.schedules()) {
