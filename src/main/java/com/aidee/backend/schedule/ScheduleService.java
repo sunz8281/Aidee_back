@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -22,12 +23,12 @@ public class ScheduleService {
     private final MeetingRepository meetingRepository;
 
     @Transactional(readOnly = true)
-    public List<ScheduleResponse> getSchedules(String projectId, int year, int month) {
+    public List<ScheduleResponse> getSchedules(String projectId, LocalDate from, LocalDate to) {
         if (!projectRepository.existsById(projectId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
-        LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
-        LocalDateTime end = start.plusMonths(1).minusSeconds(1);
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end = to.plusDays(1).atStartOfDay();
         return scheduleRepository.findByProjectIdAndPeriodOverlaps(projectId, start, end)
                 .stream().map(ScheduleResponse::from).toList();
     }

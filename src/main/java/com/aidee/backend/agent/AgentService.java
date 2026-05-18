@@ -24,6 +24,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -151,7 +152,9 @@ public class AgentService {
                 case "get_schedules" -> {
                     int year = args.has("year") ? args.path("year").asInt() : LocalDateTime.now().getYear();
                     int month = args.has("month") ? args.path("month").asInt() : LocalDateTime.now().getMonthValue();
-                    yield objectMapper.writeValueAsString(scheduleService.getSchedules(projectId, year, month));
+                    LocalDate from = LocalDate.of(year, month, 1);
+                    LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+                    yield objectMapper.writeValueAsString(scheduleService.getSchedules(projectId, from, to));
                 }
 
                 case "create_schedule" -> {
