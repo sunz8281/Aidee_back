@@ -1,6 +1,7 @@
 package com.aidee.backend.meeting;
 
 import com.aidee.backend.common.ResourceNotFoundException;
+import lombok.extern.slf4j.Slf4j;
 import com.aidee.backend.meeting.dto.*;
 import com.aidee.backend.project.Project;
 import com.aidee.backend.project.ProjectRepository;
@@ -24,6 +25,8 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
+import tools.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +38,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MeetingService {
@@ -53,6 +57,8 @@ public class MeetingService {
     @Value("${aws.s3.bucket}")
     private String bucket;
 
+    private final MeetingProgressBroadcaster broadcaster;
+    private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Transactional(readOnly = true)
@@ -86,54 +92,65 @@ public class MeetingService {
     }
 
     public SseEmitter processAudio(String meetingId, MultipartFile audioFile) {
-        meetingRepository.findById(meetingId)
+        Meeting existing = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
+        if (existing.getStatus() == MeetingStatus.DONE) {
+            throw new IllegalStateException("이미 처리 완료된 회의입니다.");
+        }
+
         SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
+        broadcaster.register(meetingId, emitter);
 
         executor.submit(() -> {
             Path tempFile = null;
             try {
-                // 임시 파일로 저장
                 String s3Key = "audio/" + UUID.randomUUID() + "_" + audioFile.getOriginalFilename();
                 tempFile = Files.createTempFile("audio_", "_" + audioFile.getOriginalFilename());
                 Files.copy(audioFile.getInputStream(), tempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
                 // S3 업로드
-                sendProgress(emitter, "upload", "녹음 파일을 업로드하는 중입니다");
+                broadcast(meetingId, "upload", "녹음 파일을 업로드하는 중입니다");
                 s3Client.putObject(
                         PutObjectRequest.builder().bucket(bucket).key(s3Key).build(),
                         RequestBody.fromFile(tempFile)
                 );
                 updateMeetingRecordingFile(meetingId, s3Key);
-                sendProgress(emitter, "upload", "녹음 파일 업로드가 완료되었습니다");
+                broadcast(meetingId, "upload", "녹음 파일 업로드가 완료되었습니다");
 
                 // STT 처리
-                sendProgress(emitter, "stt", "음성을 텍스트로 변환하는 중입니다");
+                broadcast(meetingId, "stt", "음성을 텍스트로 변환하는 중입니다");
                 SttResult sttResult = sttService.transcribe(
                         tempFile.toString(),
-                        chunk -> sendProgress(emitter, "stt", chunk),
-                        segment -> {} // 세그먼트 파싱은 서버 내부용
+                        chunk -> broadcast(meetingId, "stt", chunk),
+                        segment -> {}
                 );
-
-                sendProgress(emitter, "stt_done", "음성 변환이 완료되었습니다");
+                broadcast(meetingId, "stt_done", "음성 변환이 완료되었습니다");
 
                 // LLM 분석
-                sendProgress(emitter, "analyzing", "회의 내용을 분석하는 중입니다");
+                broadcast(meetingId, "analyzing", "회의 내용을 분석하는 중입니다");
                 LlmAnalysisResult result = llmService.analyze(sttResult.fullText(), chunk ->
-                        sendProgress(emitter, "analyzing", chunk));
+                        broadcast(meetingId, "analyzing", chunk));
 
+                // 처리 결과 저장 (반드시 완료)
                 saveAnalysisResult(meetingId, sttResult, result);
 
-                emitter.send(SseEmitter.event()
-                        .name("done")
-                        .data("{\"step\":\"done\",\"message\":\"분석이 완료되었습니다\",\"meetingId\":\"" + meetingId + "\"}"));
-                emitter.complete();
+                // 완료 이벤트: 전체 회의 상세 전송
+                try {
+                    MeetingDetailResponse detail = getMeeting(meetingId);
+                    broadcaster.send(meetingId, "done", objectMapper.writeValueAsString(detail));
+                } catch (Exception e) {
+                    log.warn("done 이벤트 직렬화 실패: {}", e.getMessage());
+                    broadcaster.send(meetingId, "done",
+                            "{\"meetingId\":\"" + meetingId + "\",\"message\":\"분석이 완료되었습니다\"}");
+                }
+                broadcaster.complete(meetingId);
 
             } catch (Exception e) {
-                emitter.completeWithError(e);
+                log.error("오디오 처리 실패 (meetingId={}): {}", meetingId, e.getMessage(), e);
+                failMeeting(meetingId);
+                broadcaster.completeWithError(meetingId, "처리 중 오류가 발생했습니다");
             } finally {
-                // 임시 파일 삭제
                 if (tempFile != null) {
                     try { Files.deleteIfExists(tempFile); } catch (IOException ignored) {}
                 }
@@ -157,24 +174,73 @@ public class MeetingService {
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
         for (SttResult.Segment seg : sttResult.segments()) {
-            ScriptSegment script = scriptRepository.save(
-                    ScriptSegment.create(meeting, seg.startTime(), seg.text()));
-            float[] embedding = embeddingService.embed(seg.text());
-            scriptEmbeddingRepository.save(ScriptEmbedding.create(
-                    script.getId(), meeting.getId(), meeting.getProject().getId(),
-                    meeting.getTitle(), meeting.getMeetingAt(),
-                    seg.startTime(), seg.text(), embedding));
+            try {
+                ScriptSegment script = scriptRepository.save(
+                        ScriptSegment.create(meeting, seg.startTime(), seg.text()));
+                float[] embedding = embeddingService.embed(seg.text());
+                scriptEmbeddingRepository.save(ScriptEmbedding.create(
+                        script.getId(), meeting.getId(), meeting.getProject().getId(),
+                        meeting.getTitle(), meeting.getMeetingAt(),
+                        seg.startTime(), seg.text(), embedding));
+            } catch (Exception e) {
+                // 임베딩 실패해도 전체 처리는 계속
+                log.warn("세그먼트 임베딩 실패 (startTime={}): {}", seg.startTime(), e.getMessage());
+            }
         }
 
         for (LlmAnalysisResult.ScheduleData sd : result.schedules()) {
-            scheduleRepository.save(Schedule.create(
-                    meeting.getProject(), meeting,
-                    sd.title(), sd.startTime(), sd.endTime(), sd.allDay(), "ai"
-            ));
+            try {
+                scheduleRepository.save(Schedule.create(
+                        meeting.getProject(), meeting,
+                        sd.title(), sd.startTime(), sd.endTime(), sd.allDay(), "ai"
+                ));
+            } catch (Exception e) {
+                log.warn("스케줄 저장 실패 (title={}): {}", sd.title(), e.getMessage());
+            }
         }
 
         meeting.completeProcessing(result.summary(), result.memo());
         meetingRepository.save(meeting);
+    }
+
+    public SseEmitter streamStatus(String meetingId) {
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+
+        SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
+
+        // 이미 완료/실패 상태면 즉시 신호만 전송 (detail은 GET /meetings/:id로 조회)
+        if (meeting.getStatus() == MeetingStatus.DONE) {
+            executor.submit(() -> {
+                try {
+                    emitter.send(SseEmitter.event().name("done").data("{\"meetingId\":\"" + meetingId + "\"}"));
+                    emitter.complete();
+                } catch (Exception ignored) {}
+            });
+            return emitter;
+        }
+
+        if (meeting.getStatus() == MeetingStatus.FAILED) {
+            executor.submit(() -> {
+                try {
+                    emitter.send(SseEmitter.event().name("failed").data("{\"status\":\"failed\"}"));
+                    emitter.complete();
+                } catch (Exception ignored) {}
+            });
+            return emitter;
+        }
+
+        // 처리 중인 경우 broadcaster에 등록해 실시간 이벤트 수신
+        broadcaster.register(meetingId, emitter);
+        return emitter;
+    }
+
+    @Transactional
+    protected void failMeeting(String meetingId) {
+        meetingRepository.findById(meetingId).ifPresent(m -> {
+            m.failProcessing();
+            meetingRepository.save(m);
+        });
     }
 
     @Transactional(readOnly = true)
@@ -194,14 +260,10 @@ public class MeetingService {
         return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl);
     }
 
-    private void sendProgress(SseEmitter emitter, String step, String message) {
-        try {
-            emitter.send(SseEmitter.event()
-                    .name(step)
-                    .data("{\"message\":\"" + message.replace("\"", "\\\"").replace("\n", "\\n") + "\"}"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+    // 모든 구독자에게 이벤트 브로드캐스트 — 메시지 이스케이핑 포함
+    private void broadcast(String meetingId, String event, String message) {
+        broadcaster.send(meetingId, event,
+                "{\"message\":\"" + message.replace("\"", "\\\"").replace("\n", "\\n") + "\"}");
     }
 
     private String generateAudioUrl(String s3Key) {

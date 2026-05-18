@@ -43,6 +43,11 @@ public class MeetingController {
         return ResponseEntity.ok(meetingService.getMeeting(meetingId));
     }
 
+    @GetMapping(value = "/meetings/{meetingId}/status/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamStatus(@PathVariable String meetingId) {
+        return meetingService.streamStatus(meetingId);
+    }
+
     @PatchMapping("/meetings/{meetingId}")
     public ResponseEntity<Void> updateMeeting(@PathVariable String meetingId,
                                                @RequestBody UpdateMeetingRequest request) {
