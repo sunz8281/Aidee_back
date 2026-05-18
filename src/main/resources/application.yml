@@ -5,6 +5,7 @@ logging:
   level:
     com.aidee.backend.ai: DEBUG
     com.aidee.backend.agent: INFO
+    com.aidee.backend.meeting: INFO
 
 spring:
   application:
