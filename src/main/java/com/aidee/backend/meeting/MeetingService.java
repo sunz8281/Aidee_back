@@ -229,6 +229,8 @@ public class MeetingService {
     public void deleteMeeting(String meetingId) {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+        scriptEmbeddingRepository.deleteByMeetingId(meetingId);
+        scriptRepository.deleteByMeetingId(meetingId);
         meeting.getProject().touch();
         meetingRepository.delete(meeting);
     }

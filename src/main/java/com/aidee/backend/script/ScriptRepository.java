@@ -9,6 +9,8 @@ import java.util.List;
 public interface ScriptRepository extends JpaRepository<ScriptSegment, String> {
     List<ScriptSegment> findByMeetingIdOrderByStartTimeAsc(String meetingId);
 
+    void deleteByMeetingId(String meetingId);
+
     @Query("SELECT s FROM ScriptSegment s WHERE s.meeting.project.id = :projectId ORDER BY s.meeting.createdAt ASC, s.startTime ASC")
     List<ScriptSegment> findByProjectId(@Param("projectId") String projectId);
 }
