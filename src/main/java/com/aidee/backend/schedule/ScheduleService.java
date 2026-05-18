@@ -28,7 +28,7 @@ public class ScheduleService {
         }
         LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
         LocalDateTime end = start.plusMonths(1).minusSeconds(1);
-        return scheduleRepository.findByProjectIdAndStartTimeBetween(projectId, start, end)
+        return scheduleRepository.findByProjectIdAndPeriodOverlaps(projectId, start, end)
                 .stream().map(ScheduleResponse::from).toList();
     }
 

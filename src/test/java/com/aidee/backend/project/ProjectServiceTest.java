@@ -64,7 +64,7 @@ class ProjectServiceTest {
         Project project = Project.create();
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(meetingRepository.findTop5ByProjectIdOrderByCreatedAtDesc(project.getId())).thenReturn(List.of());
-        when(scheduleRepository.findByProjectIdAndStartTimeBetween(eq(project.getId()), any(), any())).thenReturn(List.of());
+        when(scheduleRepository.findByProjectIdAndPeriodOverlaps(eq(project.getId()), any(), any())).thenReturn(List.of());
 
         ProjectDetailResponse result = projectService.getProject(project.getId());
 

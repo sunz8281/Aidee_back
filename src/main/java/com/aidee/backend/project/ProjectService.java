@@ -56,7 +56,7 @@ public class ProjectService {
                 .withHour(23).withMinute(59).withSecond(59).withNano(999999999);
 
         List<ScheduleResponse> schedules = scheduleRepository
-                .findByProjectIdAndStartTimeBetween(projectId, startOfMonth, endOfMonth)
+                .findByProjectIdAndPeriodOverlaps(projectId, startOfMonth, endOfMonth)
                 .stream().map(ScheduleResponse::from).toList();
 
         return ProjectDetailResponse.of(project, meetings, schedules);

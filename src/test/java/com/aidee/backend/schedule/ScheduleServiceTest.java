@@ -40,7 +40,7 @@ class ScheduleServiceTest {
                 LocalDateTime.of(2025, 5, 10, 11, 0),
                 false, "user");
         when(projectRepository.existsById(project.getId())).thenReturn(true);
-        when(scheduleRepository.findByProjectIdAndStartTimeBetween(any(), any(), any()))
+        when(scheduleRepository.findByProjectIdAndPeriodOverlaps(any(), any(), any()))
                 .thenReturn(List.of(schedule));
 
         List<ScheduleResponse> result = scheduleService.getSchedules(project.getId(), 2025, 5);
