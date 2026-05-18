@@ -15,7 +15,7 @@ import java.net.http.HttpResponse;
 @RequiredArgsConstructor
 public class EmbeddingService {
 
-    private static final String EMBEDDING_MODEL = "text-embedding-004";
+    private static final String EMBEDDING_MODEL = "gemini-embedding-001";
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 
     @Value("${gemini.api-key}")
@@ -27,9 +27,12 @@ public class EmbeddingService {
     public float[] embed(String text) {
         try {
             String requestBody = objectMapper.writeValueAsString(
-                    java.util.Map.of("content", java.util.Map.of(
-                            "parts", java.util.List.of(java.util.Map.of("text", text))
-                    ))
+                    java.util.Map.of(
+                            "content", java.util.Map.of(
+                                    "parts", java.util.List.of(java.util.Map.of("text", text))
+                            ),
+                            "outputDimensionality", 768
+                    )
             );
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -42,6 +45,10 @@ public class EmbeddingService {
 
             JsonNode root = objectMapper.readTree(response.body());
             JsonNode values = root.path("embedding").path("values");
+
+            if (values.isMissingNode() || values.size() == 0) {
+                throw new RuntimeException("임베딩 API 응답 오류: " + response.body());
+            }
 
             float[] result = new float[values.size()];
             for (int i = 0; i < values.size(); i++) {

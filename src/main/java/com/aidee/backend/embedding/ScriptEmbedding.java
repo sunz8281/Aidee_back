@@ -3,6 +3,7 @@ package com.aidee.backend.embedding;
 import com.aidee.backend.common.VectorConverter;
 import jakarta.persistence.*;
 import lombok.Getter;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -38,6 +39,7 @@ public class ScriptEmbedding {
 
     @Convert(converter = VectorConverter.class)
     @Column(columnDefinition = "vector(768)", nullable = false)
+    @ColumnTransformer(write = "?::vector")
     private float[] embedding;
 
     protected ScriptEmbedding() {}

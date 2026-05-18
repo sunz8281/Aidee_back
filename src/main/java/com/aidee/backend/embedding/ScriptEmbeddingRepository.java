@@ -11,22 +11,28 @@ public interface ScriptEmbeddingRepository extends JpaRepository<ScriptEmbedding
     @Query(value = """
             SELECT * FROM script_embeddings
             WHERE project_id = :projectId
+              AND (embedding <=> CAST(:query AS vector)) < :threshold
             ORDER BY embedding <=> CAST(:query AS vector)
             LIMIT :topK
             """, nativeQuery = true)
     List<ScriptEmbedding> findSimilarByProject(@Param("projectId") String projectId,
                                                 @Param("query") String query,
-                                                @Param("topK") int topK);
+                                                @Param("topK") int topK,
+                                                @Param("threshold") double threshold);
 
     @Query(value = """
             SELECT * FROM script_embeddings
             WHERE meeting_id = :meetingId
+              AND (embedding <=> CAST(:query AS vector)) < :threshold
             ORDER BY embedding <=> CAST(:query AS vector)
             LIMIT :topK
             """, nativeQuery = true)
     List<ScriptEmbedding> findSimilarByMeeting(@Param("meetingId") String meetingId,
                                                 @Param("query") String query,
-                                                @Param("topK") int topK);
+                                                @Param("topK") int topK,
+                                                @Param("threshold") double threshold);
 
     void deleteByScriptId(String scriptId);
+
+    void deleteByMeetingId(String meetingId);
 }
