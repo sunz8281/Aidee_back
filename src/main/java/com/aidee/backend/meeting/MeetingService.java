@@ -118,10 +118,11 @@ public class MeetingService {
                 updateMeetingRecordingFile(meetingId, s3Key);
                 broadcast(meetingId, "upload", "녹음 파일 업로드가 완료되었습니다");
 
-                // STT 처리
+                // S3 presigned URL 생성 후 CLOVA STT에 전달
+                String audioUrl = generateAudioUrl(s3Key);
                 broadcast(meetingId, "stt", "음성을 텍스트로 변환하는 중입니다");
                 SttResult sttResult = sttService.transcribe(
-                        tempFile.toString(),
+                        audioUrl,
                         chunk -> broadcast(meetingId, "stt", chunk),
                         segment -> {}
                 );

@@ -39,6 +39,7 @@ gemini:
 
 clova:
   speech:
+    invoke-url: ${CLOVA_SPEECH_INVOKE_URL}
     secret: ${CLOVA_SPEECH_SECRET}
 
 aws:

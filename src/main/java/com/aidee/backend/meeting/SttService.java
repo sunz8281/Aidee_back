@@ -7,17 +7,13 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -26,7 +22,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SttService {
 
-    private static final String CLOVA_URL = "https://clovaspeech-gw.ncloud.com/recog/v1/recognize";
+    @Value("${clova.speech.invoke-url}")
+    private String invokeUrl;
 
     @Value("${clova.speech.secret}")
     private String secret;
@@ -34,26 +31,28 @@ public class SttService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
-    public SttResult transcribe(String filePath, Consumer<String> onChunk, Consumer<SttResult.Segment> onSegment) {
+    /**
+     * S3 presigned URL을 CLOVA Speech에 전달해 STT 처리.
+     * 파일을 두 번 올리지 않아도 됨.
+     */
+    public SttResult transcribe(String audioUrl, Consumer<String> onChunk, Consumer<SttResult.Segment> onSegment) {
         try {
-            byte[] audioBytes = Files.readAllBytes(Path.of(filePath));
-            String boundary = UUID.randomUUID().toString().replace("-", "");
-
-            String params = "{\"language\":\"ko-KR\",\"completion\":\"sync\",\"wordAlignment\":false,\"fullText\":true}";
-
-            ByteArrayOutputStream body = new ByteArrayOutputStream();
-            appendPart(body, boundary, "params", "application/json", params.getBytes());
-            appendFilePart(body, boundary, "media", audioBytes);
-            body.write(("--" + boundary + "--\r\n").getBytes());
+            String requestBody = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
+                put("url", audioUrl);
+                put("language", "ko-KR");
+                put("completion", "sync");
+                put("wordAlignment", false);
+                put("fullText", true);
+            }});
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(CLOVA_URL))
+                    .uri(URI.create(invokeUrl + "/recognizer/url"))
                     .header("X-CLOVASPEECH-API-GW-SERVICE-SECRET", secret)
-                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
-            log.info("[CLOVA STT] 요청 시작 (파일 크기: {} bytes)", audioBytes.length);
+            log.info("[CLOVA STT] 요청 시작 (url 방식)");
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
@@ -101,21 +100,5 @@ public class SttService {
 
         log.info("[CLOVA STT] 완료 - 세그먼트: {}개, 전체 텍스트: {}자", segments.size(), joined.length());
         return new SttResult(joined, segments);
-    }
-
-    private void appendPart(ByteArrayOutputStream out, String boundary, String name, String contentType, byte[] data) throws IOException {
-        out.write(("--" + boundary + "\r\n").getBytes());
-        out.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n").getBytes());
-        out.write(("Content-Type: " + contentType + "\r\n\r\n").getBytes());
-        out.write(data);
-        out.write("\r\n".getBytes());
-    }
-
-    private void appendFilePart(ByteArrayOutputStream out, String boundary, String name, byte[] data) throws IOException {
-        out.write(("--" + boundary + "\r\n").getBytes());
-        out.write(("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"audio\"\r\n").getBytes());
-        out.write("Content-Type: application/octet-stream\r\n\r\n".getBytes());
-        out.write(data);
-        out.write("\r\n".getBytes());
     }
 }
