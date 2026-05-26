@@ -1,6 +1,10 @@
 package com.aidee.backend.meeting;
 
-import lombok.RequiredArgsConstructor;
+import com.google.protobuf.ByteString;
+import com.nbp.cdncp.nest.grpc.proto.v1.*;
+import io.grpc.*;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -10,118 +14,115 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.WebSocket;
-import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 프론트엔드 ↔ 백엔드 ↔ CLOVA Speech 간 실시간 STT 프록시.
+ * 프론트엔드(WebSocket) ↔ 백엔드 ↔ CLOVA Speech(gRPC) 실시간 STT 프록시.
  *
- * 연결 URL: ws://host/meetings/{meetingId}/stt/stream
- * - 프론트: 마이크 오디오 바이너리 청크 전송
- * - 백엔드: CLOVA WebSocket에 포워딩
- * - 백엔드: CLOVA 전사 결과를 JSON으로 프론트에 전달
- *   {"type":"partial","text":"..."}  — 중간 결과
- *   {"type":"final","text":"..."}    — 확정 결과
+ * 연결: ws://host/meetings/{meetingId}/stt/stream
+ * 프론트 → 백엔드: PCM 16bit 16kHz 1ch 바이너리 청크
+ * 백엔드 → 프론트: {"text":"...", "position":0} JSON
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class RealtimeSttHandler extends AbstractWebSocketHandler {
 
-    @Value("${clova.speech.invoke-url}")
-    private String invokeUrl;
+    @Value("${clova.speech.realtime.grpc-url}")
+    private String grpcUrl;
 
-    @Value("${clova.speech.secret}")
+    @Value("${clova.speech.realtime.secret}")
     private String secret;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private static final String CONFIG_JSON =
+            "{\"transcription\":{\"language\":\"ko\"}," +
+            "\"semanticEpd\":{\"skipEmptyText\":true,\"useWordEpd\":true,\"usePeriodEpd\":true}}";
 
-    // 프론트 세션 ID → CLOVA WebSocket
-    private final Map<String, WebSocket> clovaConnections = new ConcurrentHashMap<>();
+    // 프론트 세션 ID → gRPC 요청 스트림
+    private final Map<String, StreamObserver<NestRequest>> grpcStreams = new ConcurrentHashMap<>();
+    // 프론트 세션 ID → gRPC 채널 (종료 시 shutdown)
+    private final Map<String, ManagedChannel> channels = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        String wsUrl = invokeUrl.strip().replaceAll("/+$", "")
-                .replace("https://", "wss://")
-                .replace("http://", "ws://")
-                + "/recognizer/streaming";
+        String host;
+        int port;
+        String[] parts = grpcUrl.strip().split(":");
+        host = parts[0];
+        port = parts.length > 1 ? Integer.parseInt(parts[1]) : 50051;
 
-        log.info("[RealtimeSTT] 연결 시작 sessionId={}, clovaUrl={}", session.getId(), wsUrl);
+        ManagedChannel channel = NettyChannelBuilder.forAddress(host, port)
+                .useTransportSecurity()
+                .build();
 
-        WebSocket clovaWs = httpClient.newWebSocketBuilder()
-                .header("X-CLOVASPEECH-API-KEY", secret.strip())
-                .buildAsync(URI.create(wsUrl), new ClovaListener(session))
-                .join();
+        Metadata metadata = new Metadata();
+        metadata.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER),
+                "Bearer " + secret.strip());
 
-        // 연결 직후 설정 메시지 전송 (CLOVA 프로토콜)
-        String config = "{\"config\":{\"encoding\":\"LINEAR16\",\"sampleRate\":16000,\"channels\":1}}";
-        clovaWs.sendText(config, true);
+        NestServiceGrpc.NestServiceStub stub = NestServiceGrpc.newStub(channel)
+                .withInterceptors(io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(metadata));
 
-        clovaConnections.put(session.getId(), clovaWs);
-        log.info("[RealtimeSTT] CLOVA WebSocket 연결 완료 sessionId={}", session.getId());
-    }
-
-    @Override
-    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
-        WebSocket clovaWs = clovaConnections.get(session.getId());
-        if (clovaWs == null) return;
-        ByteBuffer payload = message.getPayload();
-        clovaWs.sendBinary(payload, true)
-                .exceptionally(e -> {
-                    log.warn("[RealtimeSTT] CLOVA 전송 실패: {}", e.getMessage());
-                    return null;
-                });
-    }
-
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        WebSocket clovaWs = clovaConnections.remove(session.getId());
-        if (clovaWs != null) {
-            clovaWs.sendClose(WebSocket.NORMAL_CLOSURE, "client disconnected");
-        }
-        log.info("[RealtimeSTT] 연결 종료 sessionId={} status={}", session.getId(), status);
-    }
-
-    private static class ClovaListener implements WebSocket.Listener {
-        private final WebSocketSession clientSession;
-        private final StringBuilder buf = new StringBuilder();
-
-        ClovaListener(WebSocketSession clientSession) {
-            this.clientSession = clientSession;
-        }
-
-        @Override
-        public CompletionStage<?> onText(WebSocket ws, CharSequence data, boolean last) {
-            buf.append(data);
-            if (last) {
-                String msg = buf.toString();
-                buf.setLength(0);
+        StreamObserver<NestRequest> requestStream = stub.recognize(new StreamObserver<>() {
+            @Override
+            public void onNext(NestResponse response) {
                 try {
-                    // CLOVA 응답을 그대로 클라이언트에 전달
-                    if (clientSession.isOpen()) {
-                        clientSession.sendMessage(new TextMessage(msg));
+                    if (session.isOpen()) {
+                        session.sendMessage(new TextMessage(response.getContents()));
                     }
                 } catch (Exception e) {
                     log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
                 }
             }
-            ws.request(1);
-            return null;
-        }
 
-        @Override
-        public void onError(WebSocket ws, Throwable error) {
-            log.error("[RealtimeSTT] CLOVA 오류: {}", error.getMessage());
-            try {
-                if (clientSession.isOpen()) {
-                    clientSession.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"STT 오류가 발생했습니다\"}"));
-                }
-            } catch (Exception ignored) {}
+            @Override
+            public void onError(Throwable t) {
+                log.error("[RealtimeSTT] gRPC 오류: {}", t.getMessage());
+                try {
+                    if (session.isOpen()) {
+                        session.sendMessage(new TextMessage("{\"error\":\"STT 오류가 발생했습니다\"}"));
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            @Override
+            public void onCompleted() {
+                log.info("[RealtimeSTT] gRPC 스트림 완료 sessionId={}", session.getId());
+            }
+        });
+
+        // Config 전송
+        requestStream.onNext(NestRequest.newBuilder()
+                .setType(RequestType.CONFIG)
+                .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
+                .build());
+
+        grpcStreams.put(session.getId(), requestStream);
+        channels.put(session.getId(), channel);
+        log.info("[RealtimeSTT] 연결 sessionId={}", session.getId());
+    }
+
+    @Override
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
+        StreamObserver<NestRequest> stream = grpcStreams.get(session.getId());
+        if (stream == null) return;
+        stream.onNext(NestRequest.newBuilder()
+                .setType(RequestType.DATA)
+                .setData(NestData.newBuilder()
+                        .setChunk(ByteString.copyFrom(message.getPayload()))
+                        .build())
+                .build());
+    }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        StreamObserver<NestRequest> stream = grpcStreams.remove(session.getId());
+        if (stream != null) {
+            try { stream.onCompleted(); } catch (Exception ignored) {}
         }
+        ManagedChannel channel = channels.remove(session.getId());
+        if (channel != null) {
+            channel.shutdown();
+        }
+        log.info("[RealtimeSTT] 연결 종료 sessionId={} status={}", session.getId(), status);
     }
 }
