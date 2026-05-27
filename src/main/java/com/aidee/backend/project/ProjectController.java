@@ -1,9 +1,11 @@
 package com.aidee.backend.project;
 
+import com.aidee.backend.auth.User;
 import com.aidee.backend.project.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,30 +18,38 @@ public class ProjectController {
     private final ProjectService projectService;
 
     @GetMapping("/projects")
-    public ResponseEntity<Map<String, List<ProjectSummaryResponse>>> getProjects() {
-        return ResponseEntity.ok(Map.of("items", projectService.getProjects()));
+    public ResponseEntity<Map<String, List<ProjectSummaryResponse>>> getProjects(
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("items", projectService.getProjects(user)));
     }
 
     @PostMapping("/projects")
-    public ResponseEntity<ProjectCreateResponse> createProject() {
-        return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProject());
+    public ResponseEntity<ProjectCreateResponse> createProject(
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(projectService.createProject(user));
     }
 
     @GetMapping("/projects/{projectId}")
-    public ResponseEntity<ProjectDetailResponse> getProject(@PathVariable String projectId) {
-        return ResponseEntity.ok(projectService.getProject(projectId));
+    public ResponseEntity<ProjectDetailResponse> getProject(
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(projectService.getProject(projectId, user));
     }
 
     @PatchMapping("/projects/{projectId}/title")
-    public ResponseEntity<Void> updateTitle(@PathVariable String projectId,
-                                             @RequestBody UpdateProjectTitleRequest request) {
-        projectService.updateTitle(projectId, request.name());
+    public ResponseEntity<Void> updateTitle(
+            @PathVariable String projectId,
+            @RequestBody UpdateProjectTitleRequest request,
+            @AuthenticationPrincipal User user) {
+        projectService.updateTitle(projectId, request.name(), user);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/projects/{projectId}")
-    public ResponseEntity<Void> deleteProject(@PathVariable String projectId) {
-        projectService.deleteProject(projectId);
+    public ResponseEntity<Void> deleteProject(
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        projectService.deleteProject(projectId, user);
         return ResponseEntity.noContent().build();
     }
 }

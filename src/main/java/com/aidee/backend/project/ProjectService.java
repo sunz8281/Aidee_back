@@ -1,5 +1,6 @@
 package com.aidee.backend.project;
 
+import com.aidee.backend.auth.User;
 import com.aidee.backend.common.ResourceNotFoundException;
 import com.aidee.backend.meeting.MeetingRepository;
 import com.aidee.backend.meeting.dto.MeetingSummaryResponse;
@@ -24,8 +25,8 @@ public class ProjectService {
     private final ScheduleRepository scheduleRepository;
 
     @Transactional(readOnly = true)
-    public List<ProjectSummaryResponse> getProjects() {
-        return projectRepository.findAll().stream()
+    public List<ProjectSummaryResponse> getProjects(User user) {
+        return projectRepository.findByUserId(user.getId()).stream()
                 .map(project -> ProjectSummaryResponse.of(
                         project,
                         meetingRepository.countByProjectId(project.getId()),
@@ -35,15 +36,15 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectCreateResponse createProject() {
-        Project project = Project.create();
+    public ProjectCreateResponse createProject(User user) {
+        Project project = Project.create(user);
         projectRepository.save(project);
         return new ProjectCreateResponse(project.getId());
     }
 
     @Transactional(readOnly = true)
-    public ProjectDetailResponse getProject(String projectId) {
-        Project project = projectRepository.findById(projectId)
+    public ProjectDetailResponse getProject(String projectId, User user) {
+        Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
 
         List<MeetingSummaryResponse> meetings = meetingRepository
@@ -63,17 +64,16 @@ public class ProjectService {
     }
 
     @Transactional
-    public void updateTitle(String projectId, String name) {
-        Project project = projectRepository.findById(projectId)
+    public void updateTitle(String projectId, String name, User user) {
+        Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
         project.updateTitle(name);
     }
 
     @Transactional
-    public void deleteProject(String projectId) {
-        if (!projectRepository.existsById(projectId)) {
-            throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
-        }
-        projectRepository.deleteById(projectId);
+    public void deleteProject(String projectId, User user) {
+        Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
+        projectRepository.delete(project);
     }
 }

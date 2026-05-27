@@ -10,6 +10,14 @@ logging:
 spring:
   application:
     name: backend
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: email, profile
   datasource:
     url: ${DB_URL}/${DB_NAME}
     username: ${DB_USERNAME}
@@ -33,6 +41,13 @@ spring:
 app:
   upload:
     dir: ./uploads
+  oauth2:
+    redirect-url: ${OAUTH2_REDIRECT_URL:http://localhost:3000}
+    cookie-secure: ${OAUTH2_COOKIE_SECURE:false}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 86400000
 
 gemini:
   api-key: ${GEMINI_API_KEY}

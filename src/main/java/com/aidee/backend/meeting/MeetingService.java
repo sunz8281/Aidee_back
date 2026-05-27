@@ -1,5 +1,6 @@
 package com.aidee.backend.meeting;
 
+import com.aidee.backend.auth.User;
 import com.aidee.backend.common.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import com.aidee.backend.meeting.dto.*;
@@ -62,18 +63,18 @@ public class MeetingService {
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Transactional(readOnly = true)
-    public List<MeetingSummaryResponse> getMeetings(String projectId) {
-        if (!projectRepository.existsById(projectId)) {
+    public List<MeetingSummaryResponse> getMeetings(String projectId, String userId) {
+        if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
-        return meetingRepository.findByProjectId(projectId).stream()
+        return meetingRepository.findByProjectIdOrderByMeetingAtDesc(projectId).stream()
                 .map(MeetingSummaryResponse::from)
                 .toList();
     }
 
     @Transactional
-    public MeetingCreateResponse createMeeting(String projectId, CreateMeetingRequest request) {
-        Project project = projectRepository.findById(projectId)
+    public MeetingCreateResponse createMeeting(String projectId, CreateMeetingRequest request, String userId) {
+        Project project = projectRepository.findByIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
 
         String title = (request != null && request.title() != null && !request.title().isBlank())
@@ -302,8 +303,8 @@ public class MeetingService {
     }
 
     @Transactional(readOnly = true)
-    public List<MemoItemResponse> getMemos(String projectId) {
-        if (!projectRepository.existsById(projectId)) {
+    public List<MemoItemResponse> getMemos(String projectId, String userId) {
+        if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
         return meetingRepository.findByProjectIdAndMemoIsNotNull(projectId).stream()

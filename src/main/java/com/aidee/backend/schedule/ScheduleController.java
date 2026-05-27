@@ -1,10 +1,12 @@
 package com.aidee.backend.schedule;
 
+import com.aidee.backend.auth.User;
 import com.aidee.backend.schedule.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -21,16 +23,18 @@ public class ScheduleController {
     public ResponseEntity<Map<String, List<ScheduleResponse>>> getSchedules(
             @PathVariable String projectId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(Map.of("items", scheduleService.getSchedules(projectId, from, to)));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("items", scheduleService.getSchedules(projectId, from, to, user.getId())));
     }
 
     @PostMapping("/projects/{projectId}/schedules")
     public ResponseEntity<CreateScheduleResponse> createSchedule(
             @PathVariable String projectId,
-            @RequestBody CreateScheduleRequest request) {
+            @RequestBody CreateScheduleRequest request,
+            @AuthenticationPrincipal User user) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(scheduleService.createSchedule(projectId, request));
+                .body(scheduleService.createSchedule(projectId, request, user.getId()));
     }
 
     @PutMapping("/schedules/{scheduleId}")

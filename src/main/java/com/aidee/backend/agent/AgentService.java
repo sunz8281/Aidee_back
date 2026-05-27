@@ -54,8 +54,8 @@ public class AgentService {
     private final VectorConverter vectorConverter;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
-    public SseEmitter chat(String projectId, String meetingId, AgentRequest request) {
-        if (!projectRepository.existsById(projectId)) {
+    public SseEmitter chat(String projectId, String meetingId, AgentRequest request, String userId) {
+        if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
         if (meetingId != null && !meetingRepository.existsById(meetingId)) {
@@ -98,7 +98,7 @@ public class AgentService {
                         String toolName = fc.path("name").asText();
                         tools.jackson.databind.JsonNode args = fc.path("args");
                         emitter.send(SseEmitter.event().name("tool_call").data("{\"tool\":\"" + toolName + "\"}"));
-                        String result = executeTool(toolName, args, projectId, meetingId);
+                        String result = executeTool(toolName, args, projectId, meetingId, userId);
                         log.info("[Agent] 툴 '{}' 결과: {}자", toolName, result.length());
 
                         functionResponses.add(Map.of("functionResponse", Map.of(
@@ -122,20 +122,20 @@ public class AgentService {
         return emitter;
     }
 
-    private String executeTool(String toolName, JsonNode args, String projectId, String meetingId) {
+    private String executeTool(String toolName, JsonNode args, String projectId, String meetingId, String userId) {
         try {
             return switch (toolName) {
                 case "search_meeting_records" -> searchMeetingRecords(
                         args.path("query").asText(), projectId, meetingId);
 
                 case "get_meetings" -> objectMapper.writeValueAsString(
-                        meetingService.getMeetings(projectId));
+                        meetingService.getMeetings(projectId, userId));
 
                 case "get_meeting" -> objectMapper.writeValueAsString(
                         meetingService.getMeeting(args.path("meeting_id").asText()));
 
                 case "get_memos" -> objectMapper.writeValueAsString(
-                        meetingService.getMemos(projectId));
+                        meetingService.getMemos(projectId, userId));
 
                 case "update_memo" -> {
                     meetingService.updateMemo(
@@ -154,7 +154,7 @@ public class AgentService {
                     int month = args.has("month") ? args.path("month").asInt() : LocalDateTime.now().getMonthValue();
                     LocalDate from = LocalDate.of(year, month, 1);
                     LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
-                    yield objectMapper.writeValueAsString(scheduleService.getSchedules(projectId, from, to));
+                    yield objectMapper.writeValueAsString(scheduleService.getSchedules(projectId, from, to, userId));
                 }
 
                 case "create_schedule" -> {
@@ -166,7 +166,7 @@ public class AgentService {
                             "agent",
                             args.has("meeting_id") ? args.path("meeting_id").asText() : null
                     );
-                    yield objectMapper.writeValueAsString(scheduleService.createSchedule(projectId, req));
+                    yield objectMapper.writeValueAsString(scheduleService.createSchedule(projectId, req, userId));
                 }
 
                 case "update_schedule" -> {

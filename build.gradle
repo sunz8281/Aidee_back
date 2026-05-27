@@ -37,6 +37,11 @@ dependencies {
     testRuntimeOnly 'com.h2database:h2'
     testAnnotationProcessor 'org.projectlombok:lombok'
 
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
+
     implementation 'io.grpc:grpc-netty-shaded:1.66.0'
     implementation 'io.grpc:grpc-protobuf:1.66.0'
     implementation 'io.grpc:grpc-stub:1.66.0'

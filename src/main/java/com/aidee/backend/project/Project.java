@@ -1,5 +1,6 @@
 package com.aidee.backend.project;
 
+import com.aidee.backend.auth.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 
@@ -17,6 +18,10 @@ public class Project {
     @Column(nullable = false)
     private String title;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -25,10 +30,11 @@ public class Project {
 
     protected Project() {}
 
-    public static Project create() {
+    public static Project create(User user) {
         Project p = new Project();
         p.id = UUID.randomUUID().toString();
         p.title = "새 프로젝트";
+        p.user = user;
         p.createdAt = LocalDateTime.now();
         p.updatedAt = LocalDateTime.now();
         return p;

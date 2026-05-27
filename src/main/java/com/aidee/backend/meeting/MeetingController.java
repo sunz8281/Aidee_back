@@ -1,10 +1,12 @@
 package com.aidee.backend.meeting;
 
+import com.aidee.backend.auth.User;
 import com.aidee.backend.meeting.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -20,16 +22,18 @@ public class MeetingController {
 
     @GetMapping("/projects/{projectId}/meetings")
     public ResponseEntity<Map<String, List<MeetingSummaryResponse>>> getMeetings(
-            @PathVariable String projectId) {
-        return ResponseEntity.ok(Map.of("items", meetingService.getMeetings(projectId)));
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("items", meetingService.getMeetings(projectId, user.getId())));
     }
 
     @PostMapping("/projects/{projectId}/meetings")
     public ResponseEntity<MeetingCreateResponse> createMeeting(
             @PathVariable String projectId,
-            @RequestBody(required = false) CreateMeetingRequest request) {
+            @RequestBody(required = false) CreateMeetingRequest request,
+            @AuthenticationPrincipal User user) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(meetingService.createMeeting(projectId, request));
+                .body(meetingService.createMeeting(projectId, request, user.getId()));
     }
 
     @PostMapping(value = "/meetings/{meetingId}/audio", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -63,8 +67,9 @@ public class MeetingController {
 
     @GetMapping("/projects/{projectId}/memos")
     public ResponseEntity<Map<String, List<MemoItemResponse>>> getMemos(
-            @PathVariable String projectId) {
-        return ResponseEntity.ok(Map.of("items", meetingService.getMemos(projectId)));
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("items", meetingService.getMemos(projectId, user.getId())));
     }
 
     @PatchMapping("/meetings/{meetingId}/memo")

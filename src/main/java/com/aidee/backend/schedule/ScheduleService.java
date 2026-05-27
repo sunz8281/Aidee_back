@@ -23,8 +23,8 @@ public class ScheduleService {
     private final MeetingRepository meetingRepository;
 
     @Transactional(readOnly = true)
-    public List<ScheduleResponse> getSchedules(String projectId, LocalDate from, LocalDate to) {
-        if (!projectRepository.existsById(projectId)) {
+    public List<ScheduleResponse> getSchedules(String projectId, LocalDate from, LocalDate to, String userId) {
+        if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
         LocalDateTime start = from.atStartOfDay();
@@ -34,8 +34,8 @@ public class ScheduleService {
     }
 
     @Transactional
-    public CreateScheduleResponse createSchedule(String projectId, CreateScheduleRequest request) {
-        Project project = projectRepository.findById(projectId)
+    public CreateScheduleResponse createSchedule(String projectId, CreateScheduleRequest request, String userId) {
+        Project project = projectRepository.findByIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
 
         Meeting meeting = null;
