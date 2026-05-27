@@ -71,7 +71,8 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             public void onNext(NestResponse response) {
                 try {
                     if (!session.isOpen()) return;
-                    session.sendMessage(new TextMessage(parseContents(response.getContents())));
+                    String msg = parseContents(response.getContents());
+                    if (msg != null) session.sendMessage(new TextMessage(msg));
                 } catch (Exception e) {
                     log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
                 }
@@ -126,6 +127,7 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             JsonNode node = objectMapper.readTree(contents);
             String type = node.path("type").asText("partial");
             String text = node.path("transcription").asText("");
+            if (text.isBlank()) return null;
             int startTimeSec = node.path("startTime").asInt(0) / 1000;
             return String.format(
                     "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d}",
