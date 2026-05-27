@@ -123,8 +123,10 @@ public class MeetingService {
                 broadcast(meetingId, "stt", "음성을 텍스트로 변환하는 중입니다");
                 SttResult sttResult = sttService.transcribe(
                         audioUrl,
-                        chunk -> broadcast(meetingId, "stt", chunk),
-                        segment -> {}
+                        chunk -> {},
+                        segment -> broadcaster.send(meetingId, "stt",
+                                "{\"startTime\":" + segment.startTime() + ",\"text\":\"" +
+                                segment.text().replace("\"", "\\\"").replace("\n", "\\n") + "\"}")
                 );
                 broadcast(meetingId, "stt_done", "음성 변환이 완료되었습니다");
 
@@ -292,6 +294,7 @@ public class MeetingService {
     public void deleteMeeting(String meetingId) {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+        scheduleRepository.deleteByMeetingId(meetingId);
         scriptEmbeddingRepository.deleteByMeetingId(meetingId);
         scriptRepository.deleteByMeetingId(meetingId);
         meeting.getProject().touch();

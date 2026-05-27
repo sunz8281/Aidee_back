@@ -16,4 +16,5 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             @Param("rangeStart") LocalDateTime rangeStart,
             @Param("rangeEnd") LocalDateTime rangeEnd);
     List<Schedule> findByMeetingId(String meetingId);
+    void deleteByMeetingId(String meetingId);
 }
