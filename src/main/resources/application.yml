@@ -41,6 +41,9 @@ clova:
   speech:
     invoke-url: ${CLOVA_SPEECH_INVOKE_URL}
     secret: ${CLOVA_SPEECH_SECRET}
+    realtime:
+      grpc-url: ${CLOVA_SPEECH_REALTIME_GRPC_URL}
+      secret: ${CLOVA_SPEECH_REALTIME_SECRET}
 
 aws:
   access-key: ${AWS_ACCESS_KEY}

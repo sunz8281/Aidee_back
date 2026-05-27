@@ -46,8 +46,8 @@ public class SttService {
             }});
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(invokeUrl + "/recognizer/url"))
-                    .header("X-CLOVASPEECH-API-GW-SERVICE-SECRET", secret)
+                    .uri(URI.create(invokeUrl.strip().replaceAll("/+$", "") + "/recognizer/url"))
+                    .header("X-CLOVASPEECH-API-KEY", secret.strip())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
