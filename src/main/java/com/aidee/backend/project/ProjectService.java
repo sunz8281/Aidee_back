@@ -100,7 +100,7 @@ public class ProjectService {
                 .orElseThrow(() -> new ResourceNotFoundException("유효하지 않은 공유 링크입니다."));
 
         List<MeetingSummaryResponse> meetings = meetingRepository
-                .findByProjectIdOrderByMeetingAtDesc(project.getId())
+                .findTop5ByProjectIdOrderByMeetingAtDesc(project.getId())
                 .stream().map(MeetingSummaryResponse::from).toList();
 
         LocalDateTime now = LocalDateTime.now();

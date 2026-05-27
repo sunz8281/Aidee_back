@@ -7,6 +7,7 @@ import java.util.List;
 public interface MeetingRepository extends JpaRepository<Meeting, String> {
     List<Meeting> findByProjectIdOrderByMeetingAtDesc(String projectId);
     List<Meeting> findTop5ByProjectIdOrderByCreatedAtDesc(String projectId);
+    List<Meeting> findTop5ByProjectIdOrderByMeetingAtDesc(String projectId);
     List<Meeting> findByProjectIdAndMemoIsNotNull(String projectId);
     long countByProjectId(String projectId);
     long countByProjectIdAndMemoIsNotNullAndMemoNot(String projectId, String memo);
