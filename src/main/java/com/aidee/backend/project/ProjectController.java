@@ -1,6 +1,7 @@
 package com.aidee.backend.project;
 
 import com.aidee.backend.auth.User;
+import com.aidee.backend.meeting.MeetingService;
 import com.aidee.backend.project.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,7 @@ import java.util.Map;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final MeetingService meetingService;
 
     @GetMapping("/projects")
     public ResponseEntity<Map<String, List<ProjectSummaryResponse>>> getProjects(
@@ -72,5 +74,12 @@ public class ProjectController {
     public ResponseEntity<ProjectDetailResponse> getSharedProject(
             @PathVariable String shareToken) {
         return ResponseEntity.ok(projectService.getSharedProject(shareToken));
+    }
+
+    @GetMapping("/share/{shareToken}/meetings/{meetingId}")
+    public ResponseEntity<com.aidee.backend.meeting.dto.MeetingDetailResponse> getSharedMeeting(
+            @PathVariable String shareToken,
+            @PathVariable String meetingId) {
+        return ResponseEntity.ok(meetingService.getSharedMeeting(shareToken, meetingId));
     }
 }

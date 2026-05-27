@@ -4,6 +4,7 @@ import com.aidee.backend.auth.User;
 import com.aidee.backend.common.ResourceNotFoundException;
 import com.aidee.backend.meeting.MeetingRepository;
 import com.aidee.backend.meeting.dto.MeetingSummaryResponse;
+import com.aidee.backend.meeting.dto.MemoItemResponse;
 import com.aidee.backend.project.dto.ProjectCreateResponse;
 import com.aidee.backend.project.dto.ProjectDetailResponse;
 import com.aidee.backend.project.dto.ProjectSummaryResponse;
@@ -61,7 +62,7 @@ public class ProjectService {
                 .findByProjectIdAndPeriodOverlaps(projectId, startOfMonth, endOfMonth)
                 .stream().map(ScheduleResponse::from).toList();
 
-        return ProjectDetailResponse.of(project, meetings, schedules);
+        return ProjectDetailResponse.of(project, meetings, schedules, List.of());
     }
 
     @Transactional
@@ -111,6 +112,11 @@ public class ProjectService {
                 .findByProjectIdAndPeriodOverlaps(project.getId(), startOfMonth, endOfMonth)
                 .stream().map(ScheduleResponse::from).toList();
 
-        return ProjectDetailResponse.of(project, meetings, schedules);
+        List<MemoItemResponse> memos = meetingRepository
+                .findByProjectIdAndMemoIsNotNull(project.getId()).stream()
+                .filter(m -> m.getMemo() != null && !m.getMemo().isBlank())
+                .map(MemoItemResponse::from).toList();
+
+        return ProjectDetailResponse.of(project, meetings, schedules, memos);
     }
 }

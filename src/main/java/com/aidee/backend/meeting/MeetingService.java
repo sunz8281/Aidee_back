@@ -287,6 +287,33 @@ public class MeetingService {
                 .url().toString();
     }
 
+    @Transactional(readOnly = true)
+    public MeetingDetailResponse getSharedMeeting(String shareToken, String meetingId) {
+        Project project = projectRepository.findByShareToken(shareToken)
+                .orElseThrow(() -> new ResourceNotFoundException("유효하지 않은 공유 링크입니다."));
+
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+
+        if (!meeting.getProject().getId().equals(project.getId())) {
+            throw new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId);
+        }
+
+        List<ScriptSegmentResponse> scripts = scriptRepository
+                .findByMeetingIdOrderByStartTimeAsc(meetingId)
+                .stream().map(ScriptSegmentResponse::from).toList();
+
+        List<com.aidee.backend.schedule.dto.ScheduleResponse> schedules = scheduleRepository
+                .findByMeetingId(meetingId)
+                .stream().map(com.aidee.backend.schedule.dto.ScheduleResponse::from).toList();
+
+        java.util.Map<String, String> speakerNames = speakerNameRepository.findByMeetingId(meetingId)
+                .stream().collect(java.util.stream.Collectors.toMap(SpeakerName::getLabel, SpeakerName::getName));
+
+        String audioUrl = generateAudioUrl(meeting.getRecordingFile());
+        return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl, speakerNames);
+    }
+
     @Transactional
     public void updateMeeting(String meetingId, UpdateMeetingRequest request) {
         Meeting meeting = meetingRepository.findById(meetingId)
