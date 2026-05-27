@@ -20,18 +20,21 @@ public class ScriptSegment {
     @Column(nullable = false)
     private int startTime;
 
+    private String speaker;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
 
     protected ScriptSegment() {}
 
-    public static ScriptSegment create(Meeting meeting, int startTime, String contents) {
+    public static ScriptSegment create(Meeting meeting, int startTime, String contents, String speaker) {
         ScriptSegment s = new ScriptSegment();
         s.id = UUID.randomUUID().toString();
         s.meeting = meeting;
         s.startTime = startTime;
         s.contents = contents;
+        s.speaker = speaker;
         return s;
     }
 }

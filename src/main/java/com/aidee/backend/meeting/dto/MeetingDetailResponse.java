@@ -5,6 +5,7 @@ import com.aidee.backend.schedule.dto.ScheduleResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public record MeetingDetailResponse(
         String id,
@@ -16,12 +17,14 @@ public record MeetingDetailResponse(
         List<ScriptSegmentResponse> scripts,
         List<ScheduleResponse> schedules,
         String audioUrl,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Map<String, String> speakerNames
 ) {
     public static MeetingDetailResponse of(Meeting meeting,
                                            List<ScriptSegmentResponse> scripts,
                                            List<ScheduleResponse> schedules,
-                                           String audioUrl) {
+                                           String audioUrl,
+                                           Map<String, String> speakerNames) {
         return new MeetingDetailResponse(
                 meeting.getId(),
                 meeting.getTitle(),
@@ -32,7 +35,8 @@ public record MeetingDetailResponse(
                 scripts,
                 schedules,
                 audioUrl,
-                meeting.getCreatedAt()
+                meeting.getCreatedAt(),
+                speakerNames
         );
     }
 }

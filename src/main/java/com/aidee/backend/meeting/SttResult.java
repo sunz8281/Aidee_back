@@ -6,5 +6,5 @@ public record SttResult(
         String fullText,
         List<Segment> segments
 ) {
-    public record Segment(int startTime, String text) {}
+    public record Segment(int startTime, String text, String speaker) {}
 }

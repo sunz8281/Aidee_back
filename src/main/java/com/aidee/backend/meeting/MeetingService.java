@@ -58,6 +58,7 @@ public class MeetingService {
     @Value("${aws.s3.bucket}")
     private String bucket;
 
+    private final SpeakerNameRepository speakerNameRepository;
     private final MeetingProgressBroadcaster broadcaster;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
@@ -126,8 +127,9 @@ public class MeetingService {
                         audioUrl,
                         chunk -> {},
                         segment -> broadcaster.send(meetingId, "stt",
-                                "{\"startTime\":" + segment.startTime() + ",\"text\":\"" +
-                                segment.text().replace("\"", "\\\"").replace("\n", "\\n") + "\"}")
+                                "{\"startTime\":" + segment.startTime() +
+                                ",\"speaker\":" + (segment.speaker() != null ? "\"" + segment.speaker() + "\"" : "null") +
+                                ",\"text\":\"" + segment.text().replace("\"", "\\\"").replace("\n", "\\n") + "\"}")
                 );
                 broadcast(meetingId, "stt_done", "음성 변환이 완료되었습니다");
 
@@ -180,7 +182,7 @@ public class MeetingService {
         for (SttResult.Segment seg : sttResult.segments()) {
             try {
                 ScriptSegment script = scriptRepository.save(
-                        ScriptSegment.create(meeting, seg.startTime(), seg.text()));
+                        ScriptSegment.create(meeting, seg.startTime(), seg.text(), seg.speaker()));
                 float[] embedding = embeddingService.embed(seg.text());
                 scriptEmbeddingRepository.save(ScriptEmbedding.create(
                         script.getId(), meeting.getId(), meeting.getProject().getId(),
@@ -260,8 +262,11 @@ public class MeetingService {
                 .findByMeetingId(meetingId)
                 .stream().map(com.aidee.backend.schedule.dto.ScheduleResponse::from).toList();
 
+        java.util.Map<String, String> speakerNames = speakerNameRepository.findByMeetingId(meetingId)
+                .stream().collect(java.util.stream.Collectors.toMap(SpeakerName::getLabel, SpeakerName::getName));
+
         String audioUrl = generateAudioUrl(meeting.getRecordingFile());
-        return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl);
+        return MeetingDetailResponse.of(meeting, scripts, schedules, audioUrl, speakerNames);
     }
 
     // 모든 구독자에게 이벤트 브로드캐스트 — 메시지 이스케이핑 포함
@@ -298,6 +303,7 @@ public class MeetingService {
         scheduleRepository.deleteByMeetingId(meetingId);
         scriptEmbeddingRepository.deleteByMeetingId(meetingId);
         scriptRepository.deleteByMeetingId(meetingId);
+        speakerNameRepository.deleteByMeetingId(meetingId);
         meeting.getProject().touch();
         meetingRepository.delete(meeting);
     }
@@ -319,5 +325,16 @@ public class MeetingService {
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
         meeting.updateMemo(memo);
         meeting.getProject().touch();
+    }
+
+    @Transactional
+    public void updateSpeakerName(String meetingId, String label, String name) {
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+        speakerNameRepository.findByMeetingIdAndLabel(meetingId, label)
+                .ifPresentOrElse(
+                        s -> { s.updateName(name); speakerNameRepository.save(s); },
+                        () -> speakerNameRepository.save(SpeakerName.create(meeting, label, name))
+                );
     }
 }

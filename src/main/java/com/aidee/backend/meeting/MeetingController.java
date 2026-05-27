@@ -78,4 +78,12 @@ public class MeetingController {
         meetingService.updateMemo(meetingId, request.memo());
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/meetings/{meetingId}/speakers/{label}")
+    public ResponseEntity<Void> updateSpeakerName(@PathVariable String meetingId,
+                                                   @PathVariable String label,
+                                                   @RequestBody UpdateSpeakerNameRequest request) {
+        meetingService.updateSpeakerName(meetingId, label, request.name());
+        return ResponseEntity.noContent().build();
+    }
 }

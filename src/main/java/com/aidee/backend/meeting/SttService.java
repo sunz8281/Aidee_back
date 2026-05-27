@@ -43,6 +43,11 @@ public class SttService {
                 put("completion", "sync");
                 put("wordAlignment", false);
                 put("fullText", true);
+                put("diarization", new java.util.LinkedHashMap<>() {{
+                    put("enable", true);
+                    put("speakerCountMin", 1);
+                    put("speakerCountMax", 10);
+                }});
             }});
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -82,13 +87,14 @@ public class SttService {
             for (JsonNode seg : segs) {
                 int startSec = seg.path("start").asInt() / 1000;
                 String text = seg.path("text").asText();
-                SttResult.Segment segment = new SttResult.Segment(startSec, text);
+                String speaker = seg.path("speaker").path("label").asText(null);
+                SttResult.Segment segment = new SttResult.Segment(startSec, text, speaker);
                 segments.add(segment);
                 onChunk.accept(text);
                 onSegment.accept(segment);
             }
         } else if (!fullText.isBlank()) {
-            SttResult.Segment segment = new SttResult.Segment(0, fullText);
+            SttResult.Segment segment = new SttResult.Segment(0, fullText, null);
             segments.add(segment);
             onChunk.accept(fullText);
             onSegment.accept(segment);
