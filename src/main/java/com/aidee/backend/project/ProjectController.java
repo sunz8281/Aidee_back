@@ -52,4 +52,25 @@ public class ProjectController {
         projectService.deleteProject(projectId, user);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/projects/{projectId}/share")
+    public ResponseEntity<ShareProjectResponse> enableSharing(
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(projectService.enableSharing(projectId, user));
+    }
+
+    @DeleteMapping("/projects/{projectId}/share")
+    public ResponseEntity<Void> disableSharing(
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        projectService.disableSharing(projectId, user);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/share/{shareToken}")
+    public ResponseEntity<ProjectDetailResponse> getSharedProject(
+            @PathVariable String shareToken) {
+        return ResponseEntity.ok(projectService.getSharedProject(shareToken));
+    }
 }

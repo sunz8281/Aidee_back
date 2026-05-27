@@ -22,6 +22,9 @@ public class Project {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(unique = true)
+    private String shareToken;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -47,5 +50,14 @@ public class Project {
 
     public void touch() {
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public String enableSharing() {
+        this.shareToken = UUID.randomUUID().toString().replace("-", "");
+        return this.shareToken;
+    }
+
+    public void disableSharing() {
+        this.shareToken = null;
     }
 }

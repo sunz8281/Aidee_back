@@ -9,4 +9,5 @@ public interface ProjectRepository extends JpaRepository<Project, String> {
     List<Project> findByUserId(String userId);
     Optional<Project> findByIdAndUserId(String id, String userId);
     boolean existsByIdAndUserId(String id, String userId);
+    Optional<Project> findByShareToken(String shareToken);
 }

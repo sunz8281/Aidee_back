@@ -7,6 +7,7 @@ import com.aidee.backend.meeting.dto.MeetingSummaryResponse;
 import com.aidee.backend.project.dto.ProjectCreateResponse;
 import com.aidee.backend.project.dto.ProjectDetailResponse;
 import com.aidee.backend.project.dto.ProjectSummaryResponse;
+import com.aidee.backend.project.dto.ShareProjectResponse;
 import com.aidee.backend.schedule.ScheduleRepository;
 import com.aidee.backend.schedule.dto.ScheduleResponse;
 import lombok.RequiredArgsConstructor;
@@ -75,5 +76,41 @@ public class ProjectService {
         Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
         projectRepository.delete(project);
+    }
+
+    @Transactional
+    public ShareProjectResponse enableSharing(String projectId, User user) {
+        Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
+        String token = project.enableSharing();
+        return new ShareProjectResponse(token);
+    }
+
+    @Transactional
+    public void disableSharing(String projectId, User user) {
+        Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
+        project.disableSharing();
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectDetailResponse getSharedProject(String shareToken) {
+        Project project = projectRepository.findByShareToken(shareToken)
+                .orElseThrow(() -> new ResourceNotFoundException("유효하지 않은 공유 링크입니다."));
+
+        List<MeetingSummaryResponse> meetings = meetingRepository
+                .findByProjectIdOrderByMeetingAtDesc(project.getId())
+                .stream().map(MeetingSummaryResponse::from).toList();
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime endOfMonth = now.withDayOfMonth(now.toLocalDate().lengthOfMonth())
+                .withHour(23).withMinute(59).withSecond(59).withNano(999999999);
+
+        List<ScheduleResponse> schedules = scheduleRepository
+                .findByProjectIdAndPeriodOverlaps(project.getId(), startOfMonth, endOfMonth)
+                .stream().map(ScheduleResponse::from).toList();
+
+        return ProjectDetailResponse.of(project, meetings, schedules);
     }
 }
