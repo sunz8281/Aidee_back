@@ -21,24 +21,10 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       DB_URL: jdbc:postgresql://postgres:5432
-      DB_NAME: ${DB_NAME}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
-      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
-      AWS_REGION: ${AWS_REGION}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
-      CLOVA_SPEECH_INVOKE_URL: ${CLOVA_SPEECH_INVOKE_URL}
-      CLOVA_SPEECH_SECRET: ${CLOVA_SPEECH_SECRET}
-      CLOVA_SPEECH_REALTIME_GRPC_URL: ${CLOVA_SPEECH_REALTIME_GRPC_URL}
-      CLOVA_SPEECH_REALTIME_SECRET: ${CLOVA_SPEECH_REALTIME_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      JWT_SECRET: ${JWT_SECRET}
-      OAUTH2_REDIRECT_URL: ${OAUTH2_REDIRECT_URL}
     volumes:
       - uploads:/app/uploads
     depends_on:
