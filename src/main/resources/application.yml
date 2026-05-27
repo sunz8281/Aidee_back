@@ -47,7 +47,8 @@ app:
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration: 86400000
+  access-expiration: 3600000
+  refresh-expiration: 2592000000
 
 gemini:
   api-key: ${GEMINI_API_KEY}

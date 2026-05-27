@@ -2,7 +2,6 @@ package com.aidee.backend.auth;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
 @Component
@@ -27,11 +25,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String token = extractFromHeader(request);
-        if (token == null) {
-            token = extractFromCookie(request);
-        }
 
-        if (token != null && jwtUtil.isValid(token)) {
+        if (token != null && jwtUtil.isValidAccessToken(token)) {
             String userId = jwtUtil.getUserId(token);
             userRepository.findById(userId).ifPresent(user -> {
                 UsernamePasswordAuthenticationToken auth =
@@ -48,14 +43,5 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return header.substring(7);
         }
         return null;
-    }
-
-    private String extractFromCookie(HttpServletRequest request) {
-        if (request.getCookies() == null) return null;
-        return Arrays.stream(request.getCookies())
-                .filter(c -> "access_token".equals(c.getName()))
-                .map(Cookie::getValue)
-                .findFirst()
-                .orElse(null);
     }
 }

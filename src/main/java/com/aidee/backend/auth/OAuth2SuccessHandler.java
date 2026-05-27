@@ -27,15 +27,21 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
                                         Authentication authentication) throws IOException {
         OAuth2UserPrincipal principal = (OAuth2UserPrincipal) authentication.getPrincipal();
-        String token = jwtUtil.generateToken(principal.getUser().getId());
+        String userId = principal.getUser().getId();
 
-        Cookie cookie = new Cookie("access_token", token);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(cookieSecure);
-        cookie.setPath("/");
-        cookie.setMaxAge(86400); // 24시간
-        response.addCookie(cookie);
+        String accessToken = jwtUtil.generateAccessToken(userId);
+        String refreshToken = jwtUtil.generateRefreshToken(userId);
 
-        getRedirectStrategy().sendRedirect(request, response, redirectUrl);
+        // Refresh token → HttpOnly 쿠키 (Path=/auth/refresh)
+        Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
+        refreshCookie.setHttpOnly(true);
+        refreshCookie.setSecure(cookieSecure);
+        refreshCookie.setPath("/auth/refresh");
+        refreshCookie.setMaxAge(30 * 24 * 60 * 60); // 30일
+        response.addCookie(refreshCookie);
+
+        // Access token → URL 쿼리 파라미터로 전달
+        getRedirectStrategy().sendRedirect(request, response,
+                redirectUrl + "?access_token=" + accessToken);
     }
 }
