@@ -13,6 +13,8 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +39,8 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
     private static final String CONFIG_JSON =
             "{\"transcription\":{\"language\":\"ko\"}," +
             "\"semanticEpd\":{\"skipEmptyText\":true,\"useWordEpd\":true,\"usePeriodEpd\":true}}";
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 프론트 세션 ID → gRPC 요청 스트림
     private final Map<String, StreamObserver<NestRequest>> grpcStreams = new ConcurrentHashMap<>();
@@ -66,9 +70,8 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             @Override
             public void onNext(NestResponse response) {
                 try {
-                    if (session.isOpen()) {
-                        session.sendMessage(new TextMessage(response.getContents()));
-                    }
+                    if (!session.isOpen()) return;
+                    session.sendMessage(new TextMessage(parseContents(response.getContents())));
                 } catch (Exception e) {
                     log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
                 }
@@ -111,6 +114,31 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
                         .setChunk(ByteString.copyFrom(message.getPayload()))
                         .build())
                 .build());
+    }
+
+    /**
+     * CLOVA 실시간 응답을 프론트 포맷으로 정규화.
+     * CLOVA: {"type":"partial","transcription":"텍스트","startTime":1000,"endTime":2000} (ms)
+     * 프론트: {"type":"partial","text":"텍스트","startTime":1} (초)
+     */
+    private String parseContents(String contents) {
+        try {
+            JsonNode node = objectMapper.readTree(contents);
+            String type = node.path("type").asText("partial");
+            String text = node.path("transcription").asText("");
+            int startTimeSec = node.path("startTime").asInt(0) / 1000;
+            int endTimeSec = node.path("endTime").asInt(0) / 1000;
+            return String.format(
+                    "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d,\"endTime\":%d}",
+                    type,
+                    text.replace("\\", "\\\\").replace("\"", "\\\""),
+                    startTimeSec,
+                    endTimeSec
+            );
+        } catch (Exception e) {
+            log.warn("[RealtimeSTT] 응답 파싱 실패, 원본 전송: {}", e.getMessage());
+            return contents;
+        }
     }
 
     @Override
