@@ -125,10 +125,12 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
     private String parseContents(String contents) {
         try {
             JsonNode node = objectMapper.readTree(contents);
-            String type = node.path("type").asText("partial");
-            String text = node.path("transcription").asText("");
+            JsonNode t = node.path("transcription");
+            String text = t.path("text").asText("").strip();
             if (text.isBlank()) return null;
-            int startTimeSec = node.path("startTime").asInt(0) / 1000;
+            int startTimeSec = t.path("startTimestamp").asInt(0) / 1000;
+            boolean epFlag = t.path("epFlag").asBoolean(false);
+            String type = epFlag ? "final" : "partial";
             return String.format(
                     "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d}",
                     type,
@@ -136,8 +138,8 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
                     startTimeSec
             );
         } catch (Exception e) {
-            log.warn("[RealtimeSTT] 응답 파싱 실패, 원본 전송: {}", e.getMessage());
-            return contents;
+            log.warn("[RealtimeSTT] 응답 파싱 실패: {}", e.getMessage());
+            return null;
         }
     }
 
