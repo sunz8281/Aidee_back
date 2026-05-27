@@ -127,13 +127,11 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             String type = node.path("type").asText("partial");
             String text = node.path("transcription").asText("");
             int startTimeSec = node.path("startTime").asInt(0) / 1000;
-            int endTimeSec = node.path("endTime").asInt(0) / 1000;
             return String.format(
-                    "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d,\"endTime\":%d}",
+                    "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d}",
                     type,
                     text.replace("\\", "\\\\").replace("\"", "\\\""),
-                    startTimeSec,
-                    endTimeSec
+                    startTimeSec
             );
         } catch (Exception e) {
             log.warn("[RealtimeSTT] 응답 파싱 실패, 원본 전송: {}", e.getMessage());
