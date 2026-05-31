@@ -182,17 +182,24 @@ public class MeetingService {
         scriptRepository.deleteByMeetingId(meetingId);
         scriptEmbeddingRepository.deleteByMeetingId(meetingId);
 
+        // 1단계: 스크립트 저장 (DB only, 트랜잭션 짧게)
+        List<ScriptSegment> savedScripts = new ArrayList<>();
         for (SttResult.Segment seg : sttResult.segments()) {
+            savedScripts.add(scriptRepository.save(
+                    ScriptSegment.create(meeting, seg.startTime(), seg.text(), seg.speaker())));
+        }
+
+        // 2단계: 임베딩 계산 + 저장 (외부 API 호출을 DB 커넥션과 분리)
+        for (int i = 0; i < savedScripts.size(); i++) {
+            ScriptSegment script = savedScripts.get(i);
+            SttResult.Segment seg = sttResult.segments().get(i);
             try {
-                ScriptSegment script = scriptRepository.save(
-                        ScriptSegment.create(meeting, seg.startTime(), seg.text(), seg.speaker()));
                 float[] embedding = embeddingService.embed(seg.text());
                 scriptEmbeddingRepository.save(ScriptEmbedding.create(
                         script.getId(), meeting.getId(), meeting.getProject().getId(),
                         meeting.getTitle(), meeting.getMeetingAt(),
                         seg.startTime(), seg.text(), embedding));
             } catch (Exception e) {
-                // 임베딩 실패해도 전체 처리는 계속
                 log.warn("세그먼트 임베딩 실패 (startTime={}): {}", seg.startTime(), e.getMessage());
             }
         }
