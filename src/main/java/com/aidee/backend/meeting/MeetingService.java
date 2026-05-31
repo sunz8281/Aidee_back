@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -98,7 +99,14 @@ public class MeetingService {
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
         if (existing.getStatus() != MeetingStatus.PENDING) {
-            throw new IllegalStateException("이미 처리 중이거나 완료된 회의입니다.");
+            SseEmitter err = new SseEmitter(0L);
+            executor.submit(() -> {
+                try {
+                    err.send(SseEmitter.event().name("error").data("{\"message\":\"이미 처리 중이거나 완료된 회의입니다.\"}"));
+                    err.complete();
+                } catch (Exception ignored) {}
+            });
+            return err;
         }
 
         SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);

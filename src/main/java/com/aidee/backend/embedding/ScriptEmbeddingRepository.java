@@ -3,6 +3,7 @@ package com.aidee.backend.embedding;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -32,7 +33,9 @@ public interface ScriptEmbeddingRepository extends JpaRepository<ScriptEmbedding
                                                 @Param("topK") int topK,
                                                 @Param("threshold") double threshold);
 
+    @Transactional
     void deleteByScriptId(String scriptId);
 
+    @Transactional
     void deleteByMeetingId(String meetingId);
 }
