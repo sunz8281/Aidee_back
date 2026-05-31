@@ -97,8 +97,8 @@ public class MeetingService {
         Meeting existing = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
-        if (existing.getStatus() == MeetingStatus.DONE) {
-            throw new IllegalStateException("이미 처리 완료된 회의입니다.");
+        if (existing.getStatus() != MeetingStatus.PENDING) {
+            throw new IllegalStateException("이미 처리 중이거나 완료된 회의입니다.");
         }
 
         SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
@@ -178,6 +178,9 @@ public class MeetingService {
     protected void saveAnalysisResult(String meetingId, SttResult sttResult, LlmAnalysisResult result) {
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
+
+        scriptRepository.deleteByMeetingId(meetingId);
+        scriptEmbeddingRepository.deleteByMeetingId(meetingId);
 
         for (SttResult.Segment seg : sttResult.segments()) {
             try {
