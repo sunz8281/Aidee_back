@@ -279,9 +279,13 @@ public class AgentService {
                 "5. 답변은 간결하게 한다. 불필요한 설명, 재확인 요청, 완료 후 추가 제안을 하지 않는다."
         );
 
-        if (meetingId != null && liveTranscriptStore.isLive(meetingId)) {
-            systemPrompt.append("\n5. 현재 회의(ID: ").append(meetingId).append(")가 실시간 STT 녹음 중입니다. ")
-                    .append("현재 녹음 내용에 대한 질문에는 get_live_transcript 도구를 사용하여 실시간 전사 내용을 조회하세요.");
+        if (meetingId != null) {
+            systemPrompt.append("\n6. 현재 사용자가 조회 중인 회의 ID는 \"").append(meetingId).append("\"이다. ")
+                    .append("이 회의에 대한 질문에는 이 ID를 바로 사용한다. 사용자에게 회의 ID를 묻지 않는다.");
+            if (liveTranscriptStore.isLive(meetingId)) {
+                systemPrompt.append("\n7. 위 회의는 현재 실시간 STT 녹음 중이다. ")
+                        .append("현재 녹음 내용에 대한 질문에는 get_live_transcript 도구를 사용한다.");
+            }
         }
 
         List<Map<String, Object>> tools = List.of(Map.of("function_declarations", List.of(
