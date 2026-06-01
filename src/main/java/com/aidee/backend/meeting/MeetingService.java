@@ -167,6 +167,16 @@ public class MeetingService {
                                     .replace("\n", "\\n") + "\"}");
                 }
 
+                // 스케줄 이벤트
+                if (result.schedules() != null && !result.schedules().isEmpty()) {
+                    broadcaster.send(meetingId, "schedules",
+                            objectMapper.writeValueAsString(
+                                    java.util.Map.of("schedules",
+                                            scheduleRepository.findByMeetingId(meetingId).stream()
+                                                    .map(com.aidee.backend.schedule.dto.ScheduleResponse::from)
+                                                    .toList())));
+                }
+
                 // 완료 이벤트: 전체 회의 상세 전송
                 try {
                     MeetingDetailResponse detail = getMeeting(meetingId);
