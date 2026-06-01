@@ -149,7 +149,16 @@ public class MeetingService {
                 // 처리 결과 저장 (반드시 완료)
                 saveAnalysisResult(meetingId, sttResult, result);
 
-                // 메모 이벤트 (파싱된 메모를 별도로 전송)
+                // 요약 이벤트
+                if (result.summary() != null && !result.summary().isBlank()) {
+                    broadcaster.send(meetingId, "summary",
+                            "{\"summary\":\"" + result.summary()
+                                    .replace("\\", "\\\\")
+                                    .replace("\"", "\\\"")
+                                    .replace("\n", "\\n") + "\"}");
+                }
+
+                // 메모 이벤트
                 if (result.memo() != null && !result.memo().isBlank()) {
                     broadcaster.send(meetingId, "memo",
                             "{\"memo\":\"" + result.memo()
