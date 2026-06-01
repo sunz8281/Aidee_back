@@ -130,8 +130,16 @@ public class AgentService {
                 case "search_meeting_records" -> searchMeetingRecords(
                         args.path("query").asText(), projectId, meetingId);
 
-                case "get_meetings" -> objectMapper.writeValueAsString(
-                        meetingService.getMeetings(projectId, userId));
+                case "get_meetings" -> {
+                    var meetings = meetingService.getMeetings(projectId, userId);
+                    if (args.has("keyword") && !args.path("keyword").asText().isBlank()) {
+                        String keyword = args.path("keyword").asText().toLowerCase();
+                        meetings = meetings.stream()
+                                .filter(m -> m.title() != null && m.title().toLowerCase().contains(keyword))
+                                .toList();
+                    }
+                    yield objectMapper.writeValueAsString(meetings);
+                }
 
                 case "get_meeting" -> objectMapper.writeValueAsString(
                         meetingService.getMeeting(args.path("meeting_id").asText()));
@@ -278,8 +286,8 @@ public class AgentService {
                 toolDef("search_meeting_records", "회의 스크립트에서 관련 내용을 검색합니다. 회의 기록에 대한 질문일 때 사용하세요.",
                         Map.of("query", strParam("검색할 내용")), List.of("query")),
 
-                toolDef("get_meetings", "프로젝트의 회의 목록을 조회합니다.",
-                        Map.of(), List.of()),
+                toolDef("get_meetings", "프로젝트의 회의 목록을 조회합니다. keyword를 지정하면 제목에 해당 단어가 포함된 회의만 반환합니다.",
+                        Map.of("keyword", strParam("제목 검색 키워드 (선택)")), List.of()),
 
                 toolDef("get_meeting", "특정 회의의 상세 정보를 조회합니다.",
                         Map.of("meeting_id", strParam("회의 ID")), List.of("meeting_id")),
