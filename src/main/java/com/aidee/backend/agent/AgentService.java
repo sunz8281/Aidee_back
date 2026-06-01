@@ -281,14 +281,23 @@ public class AgentService {
         );
 
         if (meetingId != null) {
-            systemPrompt.append("\n\n[현재 컨텍스트]\n현재 회의 ID: \"").append(meetingId).append("\"\n")
-                    .append("이 ID는 이미 확보된 정보이다. 사용자에게 ID를 묻거나 언급하지 않는다.\n")
-                    .append("\n[즉시 실행 규칙]\n")
-                    .append("- 사용자가 '이 회의', '현재 회의', '회의 내용', '요약', '스크립트' 등을 언급하면 → 즉시 get_meeting(\"").append(meetingId).append("\") 호출\n")
-                    .append("- 회의 내용에서 특정 정보를 검색하면 → 즉시 search_meeting_records 호출\n")
-                    .append("- 어떤 경우에도 '도구를 사용해야 합니다', '알 수 없습니다', '알려주세요' 같은 말을 하지 않는다. 그냥 도구를 호출한다.");
+            systemPrompt.append("\n\n[현재 회의 컨텍스트]");
+            meetingRepository.findById(meetingId).ifPresent(meeting -> {
+                systemPrompt.append("\n회의명: ").append(meeting.getTitle());
+                systemPrompt.append("\n회의 일시: ").append(meeting.getMeetingAt());
+                systemPrompt.append("\n상태: ").append(meeting.getStatus().name().toLowerCase());
+                if (meeting.getSummary() != null && !meeting.getSummary().isBlank()) {
+                    systemPrompt.append("\n요약: ").append(meeting.getSummary());
+                }
+                if (meeting.getMemo() != null && !meeting.getMemo().isBlank()) {
+                    systemPrompt.append("\n메모: ").append(meeting.getMemo());
+                }
+            });
+            systemPrompt.append("\n위 정보는 현재 사용자가 보고 있는 회의의 기본 정보다.")
+                    .append(" '이 회의', '현재 회의'는 위 회의를 가리킨다.")
+                    .append(" 더 상세한 스크립트·일정 정보는 get_meeting 도구로 조회한다.");
             if (liveTranscriptStore.isLive(meetingId)) {
-                systemPrompt.append("\n- 이 회의는 현재 실시간 STT 녹음 중 → 내용 질문 시 get_live_transcript 호출");
+                systemPrompt.append(" 현재 실시간 녹음 중이므로 내용 질문 시 get_live_transcript를 호출한다.");
             }
         }
 
