@@ -68,7 +68,7 @@ public class AgentService {
 
         executor.submit(() -> {
             try {
-                List<Map<String, Object>> contents = buildContents(request);
+                List<Map<String, Object>> contents = buildContents(request, meetingId);
 
                 // tool loop: 스트리밍하면서 function call 감지 → 툴 실행 → 반복
                 for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -250,8 +250,33 @@ public class AgentService {
                         .replace("\n", "\\n") + "\"}"));
     }
 
-    private List<Map<String, Object>> buildContents(AgentRequest request) {
+    private List<Map<String, Object>> buildContents(AgentRequest request, String meetingId) {
         List<Map<String, Object>> contents = new ArrayList<>();
+
+        // meetingId가 있으면 대화 히스토리 맨 앞에 회의 컨텍스트를 주입한다.
+        // 시스템 프롬프트보다 conversation turn이 Gemini에서 더 강하게 반영된다.
+        if (meetingId != null) {
+            meetingRepository.findById(meetingId).ifPresent(meeting -> {
+                StringBuilder ctx = new StringBuilder();
+                ctx.append("현재 사용자가 조회 중인 회의 정보를 알려줄게.\n");
+                ctx.append("회의명: ").append(meeting.getTitle()).append("\n");
+                ctx.append("일시: ").append(meeting.getMeetingAt()).append("\n");
+                ctx.append("상태: ").append(meeting.getStatus().name().toLowerCase()).append("\n");
+                if (meeting.getSummary() != null && !meeting.getSummary().isBlank()) {
+                    ctx.append("요약: ").append(meeting.getSummary()).append("\n");
+                }
+                if (meeting.getMemo() != null && !meeting.getMemo().isBlank()) {
+                    ctx.append("메모: ").append(meeting.getMemo()).append("\n");
+                }
+                ctx.append("앞으로 '이 회의', '현재 회의'는 위 회의를 가리킨다.");
+
+                contents.add(Map.of("role", "user",
+                        "parts", List.of(Map.of("text", ctx.toString()))));
+                contents.add(Map.of("role", "model",
+                        "parts", List.of(Map.of("text", "알겠습니다. '" + meeting.getTitle() + "' 회의를 기준으로 답변하겠습니다."))));
+            });
+        }
+
         if (request.history() != null) {
             for (MessageDto msg : request.history()) {
                 contents.add(Map.of(
@@ -281,24 +306,9 @@ public class AgentService {
         );
 
         if (meetingId != null) {
-            systemPrompt.append("\n\n[현재 회의 컨텍스트]");
-            meetingRepository.findById(meetingId).ifPresent(meeting -> {
-                systemPrompt.append("\n회의명: ").append(meeting.getTitle());
-                systemPrompt.append("\n회의 일시: ").append(meeting.getMeetingAt());
-                systemPrompt.append("\n상태: ").append(meeting.getStatus().name().toLowerCase());
-                if (meeting.getSummary() != null && !meeting.getSummary().isBlank()) {
-                    systemPrompt.append("\n요약: ").append(meeting.getSummary());
-                }
-                if (meeting.getMemo() != null && !meeting.getMemo().isBlank()) {
-                    systemPrompt.append("\n메모: ").append(meeting.getMemo());
-                }
-            });
-            systemPrompt.append("\n위 정보가 현재 사용자가 보고 있는 회의다.")
-                    .append(" '이 회의', '현재 회의'는 반드시 위 회의를 가리킨다.")
-                    .append(" 이전 대화에서 다른 회의를 언급했더라도 무시하고 위 회의를 기준으로 답한다.")
-                    .append(" 더 상세한 스크립트·일정 정보는 get_meeting 도구로 조회한다.");
+            systemPrompt.append("\n7. 대화 시작 부분에 현재 회의 컨텍스트가 주입되어 있다. '이 회의', '현재 회의'는 해당 회의를 가리킨다.");
             if (liveTranscriptStore.isLive(meetingId)) {
-                systemPrompt.append(" 현재 실시간 녹음 중이므로 내용 질문 시 get_live_transcript를 호출한다.");
+                systemPrompt.append(" 이 회의는 실시간 STT 녹음 중이므로 내용 질문 시 get_live_transcript를 호출한다.");
             }
         }
 
