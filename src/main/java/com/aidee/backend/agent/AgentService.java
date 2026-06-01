@@ -127,8 +127,12 @@ public class AgentService {
     private String executeTool(String toolName, JsonNode args, String projectId, String meetingId, String userId) {
         try {
             return switch (toolName) {
-                case "search_meeting_records" -> searchMeetingRecords(
-                        args.path("query").asText(), projectId, meetingId);
+                case "search_meeting_records" -> {
+                    // meeting_id를 에이전트가 명시적으로 넘길 때만 해당 회의 내 검색, 기본은 프로젝트 전체
+                    String searchMeetingId = args.has("meeting_id") && !args.path("meeting_id").asText().isBlank()
+                            ? args.path("meeting_id").asText() : null;
+                    yield searchMeetingRecords(args.path("query").asText(), projectId, searchMeetingId);
+                }
 
                 case "get_meetings" -> {
                     var meetings = meetingService.getMeetings(projectId, userId);
@@ -313,8 +317,10 @@ public class AgentService {
         }
 
         List<Map<String, Object>> tools = List.of(Map.of("function_declarations", List.of(
-                toolDef("search_meeting_records", "회의 스크립트에서 관련 내용을 검색합니다. 회의 기록에 대한 질문일 때 사용하세요.",
-                        Map.of("query", strParam("검색할 내용")), List.of("query")),
+                toolDef("search_meeting_records", "프로젝트의 회의 스크립트에서 관련 내용을 검색합니다. 기본값은 프로젝트 전체 검색이며, meeting_id를 지정하면 해당 회의 내에서만 검색합니다.",
+                        Map.of("query", strParam("검색할 내용"),
+                               "meeting_id", strParam("특정 회의 내에서만 검색할 경우 회의 ID (선택, 기본값: 프로젝트 전체)")),
+                        List.of("query")),
 
                 toolDef("get_meetings", "프로젝트의 회의 목록을 조회합니다. keyword를 지정하면 제목에 해당 단어가 포함된 회의만 반환합니다.",
                         Map.of("keyword", strParam("제목 검색 키워드 (선택)")), List.of()),
