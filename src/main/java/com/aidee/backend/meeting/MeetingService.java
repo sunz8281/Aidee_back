@@ -149,6 +149,15 @@ public class MeetingService {
                 // 처리 결과 저장 (반드시 완료)
                 saveAnalysisResult(meetingId, sttResult, result);
 
+                // 메모 이벤트 (파싱된 메모를 별도로 전송)
+                if (result.memo() != null && !result.memo().isBlank()) {
+                    broadcaster.send(meetingId, "memo",
+                            "{\"memo\":\"" + result.memo()
+                                    .replace("\\", "\\\\")
+                                    .replace("\"", "\\\"")
+                                    .replace("\n", "\\n") + "\"}");
+                }
+
                 // 완료 이벤트: 전체 회의 상세 전송
                 try {
                     MeetingDetailResponse detail = getMeeting(meetingId);
