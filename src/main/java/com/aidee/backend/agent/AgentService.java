@@ -293,8 +293,9 @@ public class AgentService {
                     systemPrompt.append("\n메모: ").append(meeting.getMemo());
                 }
             });
-            systemPrompt.append("\n위 정보는 현재 사용자가 보고 있는 회의의 기본 정보다.")
-                    .append(" '이 회의', '현재 회의'는 위 회의를 가리킨다.")
+            systemPrompt.append("\n위 정보가 현재 사용자가 보고 있는 회의다.")
+                    .append(" '이 회의', '현재 회의'는 반드시 위 회의를 가리킨다.")
+                    .append(" 이전 대화에서 다른 회의를 언급했더라도 무시하고 위 회의를 기준으로 답한다.")
                     .append(" 더 상세한 스크립트·일정 정보는 get_meeting 도구로 조회한다.");
             if (liveTranscriptStore.isLive(meetingId)) {
                 systemPrompt.append(" 현재 실시간 녹음 중이므로 내용 질문 시 get_live_transcript를 호출한다.");
