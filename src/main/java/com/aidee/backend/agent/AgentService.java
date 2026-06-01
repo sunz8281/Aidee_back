@@ -253,12 +253,21 @@ public class AgentService {
     private List<Map<String, Object>> buildContents(AgentRequest request, String meetingId) {
         List<Map<String, Object>> contents = new ArrayList<>();
 
-        // meetingId가 있으면 대화 히스토리 맨 앞에 회의 컨텍스트를 주입한다.
-        // 시스템 프롬프트보다 conversation turn이 Gemini에서 더 강하게 반영된다.
+        if (request.history() != null) {
+            for (MessageDto msg : request.history()) {
+                contents.add(Map.of(
+                        "role", msg.role().equals("assistant") ? "model" : "user",
+                        "parts", List.of(Map.of("text", msg.content()))
+                ));
+            }
+        }
+
+        // meetingId가 있으면 현재 메시지 바로 앞에 회의 컨텍스트를 주입한다.
+        // 히스토리 뒤에 넣어야 과거 대화 내용에 덮이지 않는다.
         if (meetingId != null) {
             meetingRepository.findById(meetingId).ifPresent(meeting -> {
                 StringBuilder ctx = new StringBuilder();
-                ctx.append("현재 사용자가 조회 중인 회의 정보를 알려줄게.\n");
+                ctx.append("[현재 조회 중인 회의 — 이전 대화와 무관하게 이 회의 기준으로 답해줘]\n");
                 ctx.append("회의명: ").append(meeting.getTitle()).append("\n");
                 ctx.append("일시: ").append(meeting.getMeetingAt()).append("\n");
                 ctx.append("상태: ").append(meeting.getStatus().name().toLowerCase()).append("\n");
@@ -268,23 +277,14 @@ public class AgentService {
                 if (meeting.getMemo() != null && !meeting.getMemo().isBlank()) {
                     ctx.append("메모: ").append(meeting.getMemo()).append("\n");
                 }
-                ctx.append("앞으로 '이 회의', '현재 회의'는 위 회의를 가리킨다.");
 
                 contents.add(Map.of("role", "user",
                         "parts", List.of(Map.of("text", ctx.toString()))));
                 contents.add(Map.of("role", "model",
-                        "parts", List.of(Map.of("text", "알겠습니다. '" + meeting.getTitle() + "' 회의를 기준으로 답변하겠습니다."))));
+                        "parts", List.of(Map.of("text", "'" + meeting.getTitle() + "' 회의를 기준으로 답변하겠습니다."))));
             });
         }
 
-        if (request.history() != null) {
-            for (MessageDto msg : request.history()) {
-                contents.add(Map.of(
-                        "role", msg.role().equals("assistant") ? "model" : "user",
-                        "parts", List.of(Map.of("text", msg.content()))
-                ));
-            }
-        }
         contents.add(Map.of(
                 "role", "user",
                 "parts", List.of(Map.of("text", request.message()))
