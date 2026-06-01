@@ -281,10 +281,14 @@ public class AgentService {
         );
 
         if (meetingId != null) {
-            systemPrompt.append("\n\n현재 컨텍스트: 사용자가 회의 ID \"").append(meetingId).append("\"를 조회 중이다.")
-                    .append(" 이 회의에 대한 모든 질문에는 이 ID를 바로 사용해 도구를 호출한다. 사용자에게 ID를 묻거나 ID를 안내하지 않는다.");
+            systemPrompt.append("\n\n[현재 컨텍스트]\n현재 회의 ID: \"").append(meetingId).append("\"\n")
+                    .append("이 ID는 이미 확보된 정보이다. 사용자에게 ID를 묻거나 언급하지 않는다.\n")
+                    .append("\n[즉시 실행 규칙]\n")
+                    .append("- 사용자가 '이 회의', '현재 회의', '회의 내용', '요약', '스크립트' 등을 언급하면 → 즉시 get_meeting(\"").append(meetingId).append("\") 호출\n")
+                    .append("- 회의 내용에서 특정 정보를 검색하면 → 즉시 search_meeting_records 호출\n")
+                    .append("- 어떤 경우에도 '도구를 사용해야 합니다', '알 수 없습니다', '알려주세요' 같은 말을 하지 않는다. 그냥 도구를 호출한다.");
             if (liveTranscriptStore.isLive(meetingId)) {
-                systemPrompt.append(" 이 회의는 현재 실시간 STT 녹음 중이므로 내용 질문에는 get_live_transcript를 호출한다.");
+                systemPrompt.append("\n- 이 회의는 현재 실시간 STT 녹음 중 → 내용 질문 시 get_live_transcript 호출");
             }
         }
 
