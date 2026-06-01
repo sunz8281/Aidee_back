@@ -270,11 +270,13 @@ public class AgentService {
     private String buildBody(List<Map<String, Object>> contents, String meetingId) throws Exception {
         StringBuilder systemPrompt = new StringBuilder(
                 "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다.\n" +
-                "규칙:\n" +
-                "1. ID를 모르는 리소스를 삭제/수정할 때는 반드시 먼저 목록 조회 도구를 호출해 ID를 확인한다.\n" +
-                "2. 사용자에게 ID를 묻지 않는다. 도구로 직접 조회한다.\n" +
-                "3. 회의 내용 질문은 search_meeting_records로 검색 후 어느 회의에서 나온 내용인지 포함해 답변한다.\n" +
-                "4. 답변은 간결하게 한다."
+                "\n" +
+                "행동 원칙:\n" +
+                "1. 사용자의 요청이 명확한 행동 지시(생성, 수정, 삭제 등)이면 확인 없이 즉시 실행한다. 되묻지 않는다.\n" +
+                "2. 요청이 모호하거나 의도를 알 수 없을 때만 한 문장으로 간단히 되묻는다. 그 외에는 절대 질문하지 않는다.\n" +
+                "3. ID를 모르는 리소스를 조작할 때는 먼저 목록 조회 도구로 ID를 확인한 뒤 실행한다. 사용자에게 ID를 묻지 않는다.\n" +
+                "4. 회의 내용 질문은 search_meeting_records로 검색 후 출처 회의명을 포함해 답변한다.\n" +
+                "5. 답변은 간결하게 한다. 불필요한 설명, 재확인 요청, 완료 후 추가 제안을 하지 않는다."
         );
 
         if (meetingId != null && liveTranscriptStore.isLive(meetingId)) {
