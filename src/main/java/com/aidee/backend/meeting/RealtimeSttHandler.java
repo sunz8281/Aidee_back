@@ -5,6 +5,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.*;
 import io.grpc.*;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class RealtimeSttHandler extends AbstractWebSocketHandler {
 
     @Value("${clova.speech.realtime.grpc-url}")
@@ -40,15 +42,35 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             "{\"transcription\":{\"language\":\"ko\"}," +
             "\"semanticEpd\":{\"skipEmptyText\":true,\"useWordEpd\":true,\"usePeriodEpd\":true}}";
 
+    private final LiveTranscriptStore liveTranscriptStore;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 프론트 세션 ID → gRPC 요청 스트림
     private final Map<String, StreamObserver<NestRequest>> grpcStreams = new ConcurrentHashMap<>();
     // 프론트 세션 ID → gRPC 채널 (종료 시 shutdown)
     private final Map<String, ManagedChannel> channels = new ConcurrentHashMap<>();
+    // 프론트 세션 ID → meetingId (연결 해제 시 LiveTranscriptStore 정리용)
+    private final Map<String, String> sessionMeetingIds = new ConcurrentHashMap<>();
+
+    private String extractMeetingId(WebSocketSession session) {
+        // URI: /meetings/{meetingId}/stt/stream
+        String path = session.getUri().getPath();
+        String[] segments = path.split("/");
+        for (int i = 0; i < segments.length - 1; i++) {
+            if ("meetings".equals(segments[i])) return segments[i + 1];
+        }
+        return null;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        String meetingId = extractMeetingId(session);
+        if (meetingId != null) {
+            sessionMeetingIds.put(session.getId(), meetingId);
+            liveTranscriptStore.startSession(meetingId, session.getId());
+            log.info("[RealtimeSTT] 라이브 세션 시작 meetingId={}", meetingId);
+        }
+
         String host;
         int port;
         String[] parts = grpcUrl.strip().split(":");
@@ -66,12 +88,14 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
         NestServiceGrpc.NestServiceStub stub = NestServiceGrpc.newStub(channel)
                 .withInterceptors(io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(metadata));
 
+        String meetingIdForCallback = sessionMeetingIds.get(session.getId());
+
         StreamObserver<NestRequest> requestStream = stub.recognize(new StreamObserver<>() {
             @Override
             public void onNext(NestResponse response) {
                 try {
                     if (!session.isOpen()) return;
-                    String msg = parseContents(response.getContents());
+                    String msg = parseContents(response.getContents(), meetingIdForCallback);
                     if (msg != null) session.sendMessage(new TextMessage(msg));
                 } catch (Exception e) {
                     log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
@@ -122,7 +146,7 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
      * CLOVA: {"type":"partial","transcription":"텍스트","startTime":1000,"endTime":2000} (ms)
      * 프론트: {"type":"partial","text":"텍스트","startTime":1} (초)
      */
-    private String parseContents(String contents) {
+    private String parseContents(String contents, String meetingId) {
         try {
             JsonNode node = objectMapper.readTree(contents);
             JsonNode t = node.path("transcription");
@@ -131,6 +155,12 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             int startTimeSec = t.path("startTimestamp").asInt(0) / 1000;
             boolean epFlag = t.path("epFlag").asBoolean(false);
             String type = epFlag ? "final" : "partial";
+
+            // final 결과만 누적 버퍼에 저장
+            if (epFlag && meetingId != null) {
+                liveTranscriptStore.addFinalChunk(meetingId, text);
+            }
+
             return String.format(
                     "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d}",
                     type,
@@ -152,6 +182,11 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
         ManagedChannel channel = channels.remove(session.getId());
         if (channel != null) {
             channel.shutdown();
+        }
+        String meetingId = sessionMeetingIds.remove(session.getId());
+        if (meetingId != null) {
+            liveTranscriptStore.endSession(meetingId);
+            log.info("[RealtimeSTT] 라이브 세션 종료 meetingId={}", meetingId);
         }
         log.info("[RealtimeSTT] 연결 종료 sessionId={} status={}", session.getId(), status);
     }

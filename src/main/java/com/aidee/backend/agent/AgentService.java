@@ -8,6 +8,7 @@ import com.aidee.backend.common.VectorConverter;
 import com.aidee.backend.embedding.EmbeddingService;
 import com.aidee.backend.embedding.ScriptEmbedding;
 import com.aidee.backend.embedding.ScriptEmbeddingRepository;
+import com.aidee.backend.meeting.LiveTranscriptStore;
 import com.aidee.backend.meeting.MeetingService;
 import com.aidee.backend.meeting.dto.CreateMeetingRequest;
 import com.aidee.backend.meeting.dto.MeetingDetailResponse;
@@ -52,6 +53,7 @@ public class AgentService {
     private final GeminiClient geminiClient;
     private final ObjectMapper objectMapper;
     private final VectorConverter vectorConverter;
+    private final LiveTranscriptStore liveTranscriptStore;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public SseEmitter chat(String projectId, String meetingId, AgentRequest request, String userId) {
@@ -70,7 +72,7 @@ public class AgentService {
 
                 // tool loop: 스트리밍하면서 function call 감지 → 툴 실행 → 반복
                 for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
-                    String body = buildBody(contents);
+                    String body = buildBody(contents, meetingId);
                     log.info("[Agent] 라운드 {}/{} - contents:{}, 바디:{}bytes", round + 1, MAX_TOOL_ROUNDS, contents.size(), body.length());
 
                     List<tools.jackson.databind.JsonNode> functionCallParts = geminiClient.streamContentWithTools(
@@ -190,6 +192,18 @@ public class AgentService {
                     yield "회의가 삭제되었습니다.";
                 }
 
+                case "get_live_transcript" -> {
+                    String targetMeetingId = args.has("meeting_id")
+                            ? args.path("meeting_id").asText()
+                            : meetingId;
+                    if (targetMeetingId == null) yield "현재 실시간 녹음 중인 회의가 없습니다.";
+                    if (!liveTranscriptStore.isLive(targetMeetingId)) yield "해당 회의는 현재 실시간 녹음 중이 아닙니다.";
+                    String transcript = liveTranscriptStore.getTranscript(targetMeetingId);
+                    yield (transcript == null || transcript.isBlank())
+                            ? "아직 전사된 내용이 없습니다."
+                            : "현재까지 전사된 내용:\n" + transcript;
+                }
+
                 default -> "알 수 없는 도구: " + toolName;
             };
         } catch (Exception e) {
@@ -245,13 +259,20 @@ public class AgentService {
         return contents;
     }
 
-    private String buildBody(List<Map<String, Object>> contents) throws Exception {
-        String systemPrompt = "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다.\n" +
+    private String buildBody(List<Map<String, Object>> contents, String meetingId) throws Exception {
+        StringBuilder systemPrompt = new StringBuilder(
+                "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다.\n" +
                 "규칙:\n" +
                 "1. ID를 모르는 리소스를 삭제/수정할 때는 반드시 먼저 목록 조회 도구를 호출해 ID를 확인한다.\n" +
                 "2. 사용자에게 ID를 묻지 않는다. 도구로 직접 조회한다.\n" +
                 "3. 회의 내용 질문은 search_meeting_records로 검색 후 어느 회의에서 나온 내용인지 포함해 답변한다.\n" +
-                "4. 답변은 간결하게 한다.";
+                "4. 답변은 간결하게 한다."
+        );
+
+        if (meetingId != null && liveTranscriptStore.isLive(meetingId)) {
+            systemPrompt.append("\n5. 현재 회의(ID: ").append(meetingId).append(")가 실시간 STT 녹음 중입니다. ")
+                    .append("현재 녹음 내용에 대한 질문에는 get_live_transcript 도구를 사용하여 실시간 전사 내용을 조회하세요.");
+        }
 
         List<Map<String, Object>> tools = List.of(Map.of("function_declarations", List.of(
                 toolDef("search_meeting_records", "회의 스크립트에서 관련 내용을 검색합니다. 회의 기록에 대한 질문일 때 사용하세요.",
@@ -296,11 +317,14 @@ public class AgentService {
                         Map.of("id", strParam("일정 ID")), List.of("id")),
 
                 toolDef("delete_meeting", "회의를 삭제합니다. 회의 ID를 모를 경우 먼저 get_meetings로 목록을 조회하세요.",
-                        Map.of("meeting_id", strParam("삭제할 회의 ID")), List.of("meeting_id"))
+                        Map.of("meeting_id", strParam("삭제할 회의 ID")), List.of("meeting_id")),
+
+                toolDef("get_live_transcript", "현재 실시간 STT 녹음 중인 회의의 전사 내용을 가져옵니다. 실시간 녹음 중인 회의에 대한 질문일 때 사용하세요.",
+                        Map.of("meeting_id", strParam("회의 ID (생략 시 현재 컨텍스트 회의 사용)")), List.of())
         )));
 
         Map<String, Object> body = Map.of(
-                "system_instruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),
+                "system_instruction", Map.of("parts", List.of(Map.of("text", systemPrompt.toString()))),
                 "tools", tools,
                 "contents", contents
         );
