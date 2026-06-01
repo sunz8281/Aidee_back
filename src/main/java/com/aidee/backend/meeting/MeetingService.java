@@ -358,7 +358,7 @@ public class MeetingService {
         if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
             throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
         }
-        return meetingRepository.findByProjectIdAndMemoIsNotNull(projectId).stream()
+        return meetingRepository.findByProjectIdAndMemoIsNotNullOrderByMeetingAtDesc(projectId).stream()
                 .filter(m -> m.getMemo() != null && !m.getMemo().isBlank())
                 .map(MemoItemResponse::from)
                 .toList();

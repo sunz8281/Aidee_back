@@ -113,7 +113,7 @@ public class ProjectService {
                 .stream().map(ScheduleResponse::from).toList();
 
         List<MemoItemResponse> memos = meetingRepository
-                .findByProjectIdAndMemoIsNotNull(project.getId()).stream()
+                .findByProjectIdAndMemoIsNotNullOrderByMeetingAtDesc(project.getId()).stream()
                 .filter(m -> m.getMemo() != null && !m.getMemo().isBlank())
                 .map(MemoItemResponse::from).toList();
 
