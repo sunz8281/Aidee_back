@@ -24,7 +24,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String token = extractFromHeader(request);
+        String token = extractToken(request);
 
         if (token != null && jwtUtil.isValidAccessToken(token)) {
             String userId = jwtUtil.getUserId(token);
@@ -37,10 +37,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String extractFromHeader(HttpServletRequest request) {
+    private String extractToken(HttpServletRequest request) {
+        // 1순위: Authorization 헤더 (모바일 클라이언트)
         String header = request.getHeader("Authorization");
         if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
             return header.substring(7);
+        }
+        // 2순위: HttpOnly 쿠키 (웹 클라이언트)
+        if (request.getCookies() != null) {
+            for (var cookie : request.getCookies()) {
+                if ("access_token".equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
         }
         return null;
     }

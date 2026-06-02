@@ -9,7 +9,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -25,7 +24,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<Map<String, String>> refresh(HttpServletRequest request) {
+    public ResponseEntity<Void> refresh(HttpServletRequest request, HttpServletResponse response) {
         String refreshToken = extractRefreshCookie(request);
         if (refreshToken == null || !jwtUtil.isValidRefreshToken(refreshToken)) {
             return ResponseEntity.status(401).build();
@@ -37,16 +36,28 @@ public class AuthController {
         }
 
         String accessToken = jwtUtil.generateAccessToken(userId);
-        return ResponseEntity.ok(Map.of("access_token", accessToken));
+        Cookie accessCookie = new Cookie("access_token", accessToken);
+        accessCookie.setHttpOnly(true);
+        accessCookie.setPath("/");
+        accessCookie.setMaxAge(60 * 60);
+        response.addCookie(accessCookie);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletResponse response) {
-        Cookie cookie = new Cookie("refresh_token", null);
-        cookie.setHttpOnly(true);
-        cookie.setPath("/auth/refresh");
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
+        Cookie accessCookie = new Cookie("access_token", null);
+        accessCookie.setHttpOnly(true);
+        accessCookie.setPath("/");
+        accessCookie.setMaxAge(0);
+        response.addCookie(accessCookie);
+
+        Cookie refreshCookie = new Cookie("refresh_token", null);
+        refreshCookie.setHttpOnly(true);
+        refreshCookie.setPath("/auth/refresh");
+        refreshCookie.setMaxAge(0);
+        response.addCookie(refreshCookie);
+
         return ResponseEntity.noContent().build();
     }
 

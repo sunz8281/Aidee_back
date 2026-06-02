@@ -32,16 +32,22 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String accessToken = jwtUtil.generateAccessToken(userId);
         String refreshToken = jwtUtil.generateRefreshToken(userId);
 
-        // Refresh token → HttpOnly 쿠키 (Path=/auth/refresh)
+        // Access token → HttpOnly 쿠키 (Path=/, 1시간)
+        Cookie accessCookie = new Cookie("access_token", accessToken);
+        accessCookie.setHttpOnly(true);
+        accessCookie.setSecure(cookieSecure);
+        accessCookie.setPath("/");
+        accessCookie.setMaxAge(60 * 60);
+        response.addCookie(accessCookie);
+
+        // Refresh token → HttpOnly 쿠키 (Path=/auth/refresh, 30일)
         Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
         refreshCookie.setHttpOnly(true);
         refreshCookie.setSecure(cookieSecure);
         refreshCookie.setPath("/auth/refresh");
-        refreshCookie.setMaxAge(30 * 24 * 60 * 60); // 30일
+        refreshCookie.setMaxAge(30 * 24 * 60 * 60);
         response.addCookie(refreshCookie);
 
-        // Access token → URL 쿼리 파라미터로 전달
-        getRedirectStrategy().sendRedirect(request, response,
-                redirectUrl + "?access_token=" + accessToken);
+        getRedirectStrategy().sendRedirect(request, response, redirectUrl);
     }
 }
