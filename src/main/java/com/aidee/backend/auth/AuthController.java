@@ -19,8 +19,11 @@ public class AuthController {
     private final UserRepository userRepository;
 
     @GetMapping("/me")
-    public UserResponse me(@AuthenticationPrincipal User user) {
-        return UserResponse.from(user);
+    public ResponseEntity<UserResponse> me(@AuthenticationPrincipal User user) {
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        return ResponseEntity.ok(UserResponse.from(user));
     }
 
     @PostMapping("/refresh")
