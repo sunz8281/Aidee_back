@@ -22,11 +22,12 @@ import java.util.function.Consumer;
 public class GeminiClient {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
-    public static final String AUDIO_MODEL = "gemini-3-flash-preview";
-    public static final String TEXT_MODEL = "gemini-2.5-flash-lite";
 
     @Value("${gemini.api-key}")
     private String apiKey;
+
+    @Value("${gemini.text-model:gemini-2.5-flash}")
+    public String TEXT_MODEL;
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newHttpClient();

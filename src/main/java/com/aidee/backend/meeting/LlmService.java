@@ -50,7 +50,7 @@ public class LlmService {
                     """.formatted(objectMapper.writeValueAsString(prompt));
 
             StringBuilder accumulated = new StringBuilder();
-            geminiClient.streamContent(GeminiClient.TEXT_MODEL, requestBody, chunk -> {
+            geminiClient.streamContent(geminiClient.TEXT_MODEL, requestBody, chunk -> {
                 onChunk.accept(chunk);
                 accumulated.append(chunk);
             });

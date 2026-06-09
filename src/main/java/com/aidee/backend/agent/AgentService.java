@@ -77,7 +77,7 @@ public class AgentService {
                     log.info("[Agent] 라운드 {}/{} - contents:{}, 바디:{}bytes", round + 1, MAX_TOOL_ROUNDS, contents.size(), body.length());
 
                     List<tools.jackson.databind.JsonNode> functionCallParts = geminiClient.streamContentWithTools(
-                            GeminiClient.TEXT_MODEL, body,
+                            geminiClient.TEXT_MODEL, body,
                             text -> {
                                 try {
                                     sendDelta(emitter, text);
@@ -300,6 +300,9 @@ public class AgentService {
         }
 
         List<Map<String, Object>> tools = List.of(Map.of("function_declarations", List.of(
+                toolDef("get_meeting", "특정 회의의 상세 정보(제목, 날짜, 상태, 요약, 메모, 일정, 스크립트 목록 등)를 조회합니다. 회의에 대한 정보 또는 내용이 필요할 때 사용합니다.",
+                        Map.of("meeting_id", strParam("회의 ID")), List.of("meeting_id")),
+
                 toolDef("search_meeting_records", "회의 발언 내용(스크립트)을 키워드/의미로 검색합니다.",
                         Map.of("query", strParam("검색할 발언 내용"),
                                "meeting_id", strParam("특정 회의 내에서만 검색할 경우 회의 ID (선택, 기본값: 프로젝트 전체)")),
@@ -307,9 +310,6 @@ public class AgentService {
 
                 toolDef("get_meetings", "프로젝트의 회의 목록을 조회합니다. keyword를 지정하면 제목에 해당 단어가 포함된 회의만 반환합니다.",
                         Map.of("keyword", strParam("제목 검색 키워드 (선택)")), List.of()),
-
-                toolDef("get_meeting", "특정 회의의 상세 정보(제목, 날짜, 상태, 요약, 메모, 일정, 스크립트 목록 등)를 조회합니다. 회의에 대한 기본 정보가 필요할 때 사용합니다.",
-                        Map.of("meeting_id", strParam("회의 ID")), List.of("meeting_id")),
 
                 toolDef("get_memos", "프로젝트의 메모 목록을 조회합니다.",
                         Map.of(), List.of()),
