@@ -11,6 +11,7 @@ import com.aidee.backend.project.dto.ProjectSummaryResponse;
 import com.aidee.backend.project.dto.ShareProjectResponse;
 import com.aidee.backend.schedule.ScheduleRepository;
 import com.aidee.backend.schedule.dto.ScheduleResponse;
+import com.aidee.backend.script.ScriptRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final MeetingRepository meetingRepository;
     private final ScheduleRepository scheduleRepository;
+    private final ScriptRepository scriptRepository;
 
     @Transactional(readOnly = true)
     public List<ProjectSummaryResponse> getProjects(User user) {
@@ -76,6 +78,9 @@ public class ProjectService {
     public void deleteProject(String projectId, User user) {
         Project project = projectRepository.findByIdAndUserId(projectId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId));
+        scheduleRepository.deleteByProjectId(projectId);
+        scriptRepository.deleteByMeetingProjectId(projectId);
+        meetingRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
     }
 

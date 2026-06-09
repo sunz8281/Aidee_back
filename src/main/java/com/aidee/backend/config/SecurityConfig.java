@@ -35,7 +35,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/oauth2/**", "/login/**", "/auth/refresh", "/auth/logout", "/share/**").permitAll()
+                .requestMatchers("/oauth2/**", "/login/**", "/auth/refresh", "/auth/logout", "/share/**",
+                        "/meetings/*/stt/stream").permitAll()
                 .anyRequest().authenticated())
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo

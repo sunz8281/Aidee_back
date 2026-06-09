@@ -10,5 +10,6 @@ public interface MeetingRepository extends JpaRepository<Meeting, String> {
     List<Meeting> findTop5ByProjectIdOrderByMeetingAtDesc(String projectId);
     List<Meeting> findByProjectIdAndMemoIsNotNullOrderByMeetingAtDesc(String projectId);
     long countByProjectId(String projectId);
+    void deleteByProjectId(String projectId);
     long countByProjectIdAndMemoIsNotNullAndMemoNot(String projectId, String memo);
 }

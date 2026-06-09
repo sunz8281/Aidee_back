@@ -51,6 +51,10 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
     private final Map<String, ManagedChannel> channels = new ConcurrentHashMap<>();
     // 프론트 세션 ID → meetingId (연결 해제 시 LiveTranscriptStore 정리용)
     private final Map<String, String> sessionMeetingIds = new ConcurrentHashMap<>();
+    // meetingId → 현재 발화 그룹의 startTime(초) — 프론트에 내려주는 값
+    private final Map<String, Integer> groupStartTimes = new ConcurrentHashMap<>();
+    // meetingId → 직전 청크의 raw startTime(초) — 텀 계산용
+    private final Map<String, Integer> lastRawStartTimes = new ConcurrentHashMap<>();
 
     private String extractMeetingId(WebSocketSession session) {
         // URI: /meetings/{meetingId}/stt/stream
@@ -71,62 +75,73 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             log.info("[RealtimeSTT] 라이브 세션 시작 meetingId={}", meetingId);
         }
 
-        String host;
-        int port;
-        String[] parts = grpcUrl.strip().split(":");
-        host = parts[0];
-        port = parts.length > 1 ? Integer.parseInt(parts[1]) : 50051;
+        try {
+            String host;
+            int port;
+            String[] parts = grpcUrl.strip().split(":");
+            host = parts[0];
+            port = parts.length > 1 ? Integer.parseInt(parts[1]) : 50051;
 
-        ManagedChannel channel = NettyChannelBuilder.forAddress(host, port)
-                .useTransportSecurity()
-                .build();
+            ManagedChannel channel = NettyChannelBuilder.forAddress(host, port)
+                    .useTransportSecurity()
+                    .build();
 
-        Metadata metadata = new Metadata();
-        metadata.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER),
-                "Bearer " + secret.strip());
+            Metadata metadata = new Metadata();
+            metadata.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER),
+                    "Bearer " + secret.strip());
 
-        NestServiceGrpc.NestServiceStub stub = NestServiceGrpc.newStub(channel)
-                .withInterceptors(io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(metadata));
+            NestServiceGrpc.NestServiceStub stub = NestServiceGrpc.newStub(channel)
+                    .withInterceptors(io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(metadata));
 
-        String meetingIdForCallback = sessionMeetingIds.get(session.getId());
+            String meetingIdForCallback = sessionMeetingIds.get(session.getId());
 
-        StreamObserver<NestRequest> requestStream = stub.recognize(new StreamObserver<>() {
-            @Override
-            public void onNext(NestResponse response) {
-                try {
-                    if (!session.isOpen()) return;
-                    String msg = parseContents(response.getContents(), meetingIdForCallback);
-                    if (msg != null) session.sendMessage(new TextMessage(msg));
-                } catch (Exception e) {
-                    log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
-                }
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                log.error("[RealtimeSTT] gRPC 오류: {}", t.getMessage());
-                try {
-                    if (session.isOpen()) {
-                        session.sendMessage(new TextMessage("{\"error\":\"STT 오류가 발생했습니다\"}"));
+            StreamObserver<NestRequest> requestStream = stub.recognize(new StreamObserver<>() {
+                @Override
+                public void onNext(NestResponse response) {
+                    try {
+                        if (!session.isOpen()) return;
+                        String msg = parseContents(response.getContents(), meetingIdForCallback);
+                        if (msg != null) session.sendMessage(new TextMessage(msg));
+                    } catch (Exception e) {
+                        log.warn("[RealtimeSTT] 클라이언트 전송 실패: {}", e.getMessage());
                     }
-                } catch (Exception ignored) {}
-            }
+                }
 
-            @Override
-            public void onCompleted() {
-                log.info("[RealtimeSTT] gRPC 스트림 완료 sessionId={}", session.getId());
-            }
-        });
+                @Override
+                public void onError(Throwable t) {
+                    log.error("[RealtimeSTT] gRPC 오류: {}", t.getMessage(), t);
+                    try {
+                        if (session.isOpen()) {
+                            session.sendMessage(new TextMessage("{\"error\":\"STT 오류가 발생했습니다: " + t.getMessage() + "\"}"));
+                            session.close(CloseStatus.SERVER_ERROR);
+                        }
+                    } catch (Exception ignored) {}
+                }
 
-        // Config 전송
-        requestStream.onNext(NestRequest.newBuilder()
-                .setType(RequestType.CONFIG)
-                .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
-                .build());
+                @Override
+                public void onCompleted() {
+                    log.info("[RealtimeSTT] gRPC 스트림 완료 sessionId={}", session.getId());
+                }
+            });
 
-        grpcStreams.put(session.getId(), requestStream);
-        channels.put(session.getId(), channel);
-        log.info("[RealtimeSTT] 연결 sessionId={}", session.getId());
+            // Config 전송
+            requestStream.onNext(NestRequest.newBuilder()
+                    .setType(RequestType.CONFIG)
+                    .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
+                    .build());
+
+            grpcStreams.put(session.getId(), requestStream);
+            channels.put(session.getId(), channel);
+            log.info("[RealtimeSTT] 연결 sessionId={} meetingId={} grpcUrl={}", session.getId(), meetingId, grpcUrl);
+        } catch (Exception e) {
+            log.error("[RealtimeSTT] 연결 초기화 실패 sessionId={}: {}", session.getId(), e.getMessage(), e);
+            try {
+                if (session.isOpen()) {
+                    session.sendMessage(new TextMessage("{\"error\":\"STT 초기화 실패: " + e.getMessage() + "\"}"));
+                    session.close(CloseStatus.SERVER_ERROR);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -156,6 +171,21 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             boolean epFlag = t.path("epFlag").asBoolean(false);
             String type = epFlag ? "final" : "partial";
 
+            // 직전 청크와의 텀이 1초 이상이면 새 그룹 시작, 미만이면 현재 그룹 startTime 유지
+            int groupedStartTime;
+            if (meetingId != null) {
+                Integer lastRaw = lastRawStartTimes.get(meetingId);
+                lastRawStartTimes.put(meetingId, startTimeSec);
+                if (lastRaw == null || (startTimeSec - lastRaw) >= 2) {
+                    groupStartTimes.put(meetingId, startTimeSec);
+                    groupedStartTime = startTimeSec;
+                } else {
+                    groupedStartTime = groupStartTimes.getOrDefault(meetingId, startTimeSec);
+                }
+            } else {
+                groupedStartTime = startTimeSec;
+            }
+
             // final 결과만 누적 버퍼에 저장
             if (epFlag && meetingId != null) {
                 liveTranscriptStore.addFinalChunk(meetingId, text);
@@ -165,7 +195,7 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
                     "{\"type\":\"%s\",\"text\":\"%s\",\"startTime\":%d}",
                     type,
                     text.replace("\\", "\\\\").replace("\"", "\\\""),
-                    startTimeSec
+                    groupedStartTime
             );
         } catch (Exception e) {
             log.warn("[RealtimeSTT] 응답 파싱 실패: {}", e.getMessage());
@@ -186,6 +216,8 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
         String meetingId = sessionMeetingIds.remove(session.getId());
         if (meetingId != null) {
             liveTranscriptStore.endSession(meetingId);
+            groupStartTimes.remove(meetingId);
+            lastRawStartTimes.remove(meetingId);
             log.info("[RealtimeSTT] 라이브 세션 종료 meetingId={}", meetingId);
         }
         log.info("[RealtimeSTT] 연결 종료 sessionId={} status={}", session.getId(), status);

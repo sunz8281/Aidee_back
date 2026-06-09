@@ -98,11 +98,11 @@ public class MeetingService {
         Meeting existing = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("회의를 찾을 수 없습니다: " + meetingId));
 
-        if (existing.getStatus() != MeetingStatus.PENDING) {
+        if (existing.getStatus() == MeetingStatus.PROCESSING) {
             SseEmitter err = new SseEmitter(0L);
             executor.submit(() -> {
                 try {
-                    err.send(SseEmitter.event().name("error").data("{\"message\":\"이미 처리 중이거나 완료된 회의입니다.\"}"));
+                    err.send(SseEmitter.event().name("error").data("{\"message\":\"이미 처리 중인 회의입니다.\"}"));
                     err.complete();
                 } catch (Exception ignored) {}
             });
@@ -121,10 +121,14 @@ public class MeetingService {
 
                 // S3 업로드
                 broadcast(meetingId, "upload", "녹음 파일을 업로드하는 중입니다");
+                String contentType = audioFile.getContentType() != null
+                        ? audioFile.getContentType() : "audio/webm";
                 s3Client.putObject(
-                        PutObjectRequest.builder().bucket(bucket).key(s3Key).build(),
+                        PutObjectRequest.builder().bucket(bucket).key(s3Key)
+                                .contentType(contentType).build(),
                         RequestBody.fromFile(tempFile)
                 );
+                log.info("[STT] 업로드 파일명={} contentType={}", audioFile.getOriginalFilename(), contentType);
                 updateMeetingRecordingFile(meetingId, s3Key);
                 broadcast(meetingId, "upload", "녹음 파일 업로드가 완료되었습니다");
 
