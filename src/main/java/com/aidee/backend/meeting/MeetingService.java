@@ -238,7 +238,7 @@ public class MeetingService {
                 scriptEmbeddingRepository.save(ScriptEmbedding.create(
                         script.getId(), meeting.getId(), meeting.getProject().getId(),
                         meeting.getTitle(), meeting.getMeetingAt(),
-                        seg.startTime(), seg.text(), embedding));
+                        seg.startTime(), seg.text(), seg.speaker(), embedding));
             } catch (Exception e) {
                 log.warn("세그먼트 임베딩 실패 (startTime={}): {}", seg.startTime(), e.getMessage());
             }

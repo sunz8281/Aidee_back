@@ -53,8 +53,10 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
     private final Map<String, String> sessionMeetingIds = new ConcurrentHashMap<>();
     // meetingId → 현재 발화 그룹의 startTime(초) — 프론트에 내려주는 값
     private final Map<String, Integer> groupStartTimes = new ConcurrentHashMap<>();
-    // meetingId → 직전 청크의 raw startTime(초) — 텀 계산용
+    // meetingId → 직전 청크의 raw startTime(ms) — 텀 계산용
     private final Map<String, Integer> lastRawStartTimes = new ConcurrentHashMap<>();
+    // meetingId → 직전 청크가 마침표로 끝났는지 — 다음 청크에서 새 그룹 시작 여부
+    private final Map<String, Boolean> prevEndedWithPeriod = new ConcurrentHashMap<>();
 
     private String extractMeetingId(WebSocketSession session) {
         // URI: /meetings/{meetingId}/stt/stream
@@ -167,16 +169,22 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             JsonNode t = node.path("transcription");
             String text = t.path("text").asText("").strip();
             if (text.isBlank()) return null;
-            int startTimeSec = t.path("startTimestamp").asInt(0) / 1000;
+            int startTimeMs = t.path("startTimestamp").asInt(0);
+            int startTimeSec = startTimeMs / 1000;
             boolean epFlag = t.path("epFlag").asBoolean(false);
             String type = epFlag ? "final" : "partial";
 
-            // 직전 청크와의 텀이 1초 이상이면 새 그룹 시작, 미만이면 현재 그룹 startTime 유지
+            // 직전 청크와의 텀이 1.5초 이상이거나 직전 청크가 마침표로 끝났으면 새 그룹 시작
             int groupedStartTime;
             if (meetingId != null) {
                 Integer lastRaw = lastRawStartTimes.get(meetingId);
-                lastRawStartTimes.put(meetingId, startTimeSec);
-                if (lastRaw == null || (startTimeSec - lastRaw) >= 2) {
+                boolean prevPeriod = prevEndedWithPeriod.getOrDefault(meetingId, false);
+                lastRawStartTimes.put(meetingId, startTimeMs);
+                prevEndedWithPeriod.put(meetingId, text.endsWith("."));
+                boolean newGroup = lastRaw == null
+                        || (startTimeMs - lastRaw) >= 1500
+                        || prevPeriod;
+                if (newGroup) {
                     groupStartTimes.put(meetingId, startTimeSec);
                     groupedStartTime = startTimeSec;
                 } else {
@@ -218,6 +226,7 @@ public class RealtimeSttHandler extends AbstractWebSocketHandler {
             liveTranscriptStore.endSession(meetingId);
             groupStartTimes.remove(meetingId);
             lastRawStartTimes.remove(meetingId);
+            prevEndedWithPeriod.remove(meetingId);
             log.info("[RealtimeSTT] 라이브 세션 종료 meetingId={}", meetingId);
         }
         log.info("[RealtimeSTT] 연결 종료 sessionId={} status={}", session.getId(), status);

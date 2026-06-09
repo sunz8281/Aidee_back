@@ -246,11 +246,16 @@ public class AgentService {
             if (relevant.isEmpty()) return "관련 회의 기록 없음";
 
             return relevant.stream()
-                    .map(e -> String.format("회의명: %s / 날짜: %s / %d초 부근\n내용: %s",
-                            e.getMeetingTitle(),
-                            e.getMeetingAt().toLocalDate(),
-                            e.getStartTime(),
-                            e.getText()))
+                    .map(e -> {
+                        String speakerStr = (e.getSpeaker() != null && !e.getSpeaker().isBlank())
+                                ? " / 발화자: " + e.getSpeaker() : "";
+                        return String.format("회의명: %s / 날짜: %s / %d초 부근%s\n내용: %s",
+                                e.getMeetingTitle(),
+                                e.getMeetingAt().toLocalDate(),
+                                e.getStartTime(),
+                                speakerStr,
+                                e.getText());
+                    })
                     .collect(Collectors.joining("\n\n"));
         } catch (Exception e) {
             return "검색 실패: " + e.getMessage();

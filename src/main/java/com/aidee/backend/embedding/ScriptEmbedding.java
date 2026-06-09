@@ -37,6 +37,9 @@ public class ScriptEmbedding {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String text;
 
+    @Column(name = "speaker")
+    private String speaker;
+
     @Convert(converter = VectorConverter.class)
     @Column(columnDefinition = "vector(768)", nullable = false)
     @ColumnTransformer(write = "?::vector")
@@ -46,7 +49,7 @@ public class ScriptEmbedding {
 
     public static ScriptEmbedding create(String scriptId, String meetingId, String projectId,
                                           String meetingTitle, LocalDateTime meetingAt,
-                                          int startTime, String text, float[] embedding) {
+                                          int startTime, String text, String speaker, float[] embedding) {
         ScriptEmbedding e = new ScriptEmbedding();
         e.id = UUID.randomUUID().toString();
         e.scriptId = scriptId;
@@ -56,6 +59,7 @@ public class ScriptEmbedding {
         e.meetingAt = meetingAt;
         e.startTime = startTime;
         e.text = text;
+        e.speaker = speaker;
         e.embedding = embedding;
         return e;
     }
