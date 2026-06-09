@@ -249,10 +249,19 @@ public class AgentService {
                     .map(e -> {
                         String speakerStr = (e.getSpeaker() != null && !e.getSpeaker().isBlank())
                                 ? " / 발화자: " + e.getSpeaker() : "";
-                        return String.format("회의명: %s / 날짜: %s / %d초 부근%s\n내용: %s",
+                        int totalSec = e.getStartTime();
+                        int h = totalSec / 3600;
+                        int m = (totalSec % 3600) / 60;
+                        int s = totalSec % 60;
+                        String timeStr = h > 0
+                                ? String.format("%d시간 %d분 %d초", h, m, s)
+                                : m > 0
+                                ? String.format("%d분 %d초", m, s)
+                                : String.format("%d초", s);
+                        return String.format("회의명: %s / 날짜: %s / %s 부근%s\n내용: %s",
                                 e.getMeetingTitle(),
                                 e.getMeetingAt().toLocalDate(),
-                                e.getStartTime(),
+                                timeStr,
                                 speakerStr,
                                 e.getText());
                     })
