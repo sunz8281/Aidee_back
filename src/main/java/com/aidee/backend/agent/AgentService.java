@@ -68,7 +68,8 @@ public class AgentService {
 
         executor.submit(() -> {
             try {
-                List<Map<String, Object>> contents = buildContents(request, meetingId);
+                List<Map<String, Object>> contents = buildContents(request);
+                boolean[] textSent = {false};
 
                 // tool loop: 스트리밍하면서 function call 감지 → 툴 실행 → 반복
                 for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -77,7 +78,14 @@ public class AgentService {
 
                     List<tools.jackson.databind.JsonNode> functionCallParts = geminiClient.streamContentWithTools(
                             GeminiClient.TEXT_MODEL, body,
-                            text -> { try { sendDelta(emitter, text); } catch (IOException e) { throw new RuntimeException(e); } }
+                            text -> {
+                                try {
+                                    sendDelta(emitter, text);
+                                    textSent[0] = true;
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
                     );
 
                     log.info("[Agent] 라운드 {} 완료 - functionCalls: {}", round + 1, functionCallParts.size());
@@ -113,6 +121,9 @@ public class AgentService {
                     contents.add(Map.of("role", "user", "parts", functionResponses));
                 }
 
+                if (!textSent[0]) {
+                    sendDelta(emitter, "죄송합니다. 해당 회의의 내용을 찾을 수 없습니다.");
+                }
                 emitter.send(SseEmitter.event().name("done").data("{}"));
                 emitter.complete();
 
@@ -254,7 +265,7 @@ public class AgentService {
                         .replace("\n", "\\n") + "\"}"));
     }
 
-    private List<Map<String, Object>> buildContents(AgentRequest request, String meetingId) {
+    private List<Map<String, Object>> buildContents(AgentRequest request) {
         List<Map<String, Object>> contents = new ArrayList<>();
 
         if (request.history() != null) {
@@ -264,29 +275,6 @@ public class AgentService {
                         "parts", List.of(Map.of("text", msg.content()))
                 ));
             }
-        }
-
-        // meetingId가 있으면 현재 메시지 바로 앞에 회의 컨텍스트를 주입한다.
-        // 히스토리 뒤에 넣어야 과거 대화 내용에 덮이지 않는다.
-        if (meetingId != null) {
-            meetingRepository.findById(meetingId).ifPresent(meeting -> {
-                StringBuilder ctx = new StringBuilder();
-                ctx.append("[현재 조회 중인 회의 — 이전 대화와 무관하게 이 회의 기준으로 답해줘]\n");
-                ctx.append("회의명: ").append(meeting.getTitle()).append("\n");
-                ctx.append("일시: ").append(meeting.getMeetingAt()).append("\n");
-                ctx.append("상태: ").append(meeting.getStatus().name().toLowerCase()).append("\n");
-                if (meeting.getSummary() != null && !meeting.getSummary().isBlank()) {
-                    ctx.append("요약: ").append(meeting.getSummary()).append("\n");
-                }
-                if (meeting.getMemo() != null && !meeting.getMemo().isBlank()) {
-                    ctx.append("메모: ").append(meeting.getMemo()).append("\n");
-                }
-
-                contents.add(Map.of("role", "user",
-                        "parts", List.of(Map.of("text", ctx.toString()))));
-                contents.add(Map.of("role", "model",
-                        "parts", List.of(Map.of("text", "'" + meeting.getTitle() + "' 회의를 기준으로 답변하겠습니다."))));
-            });
         }
 
         contents.add(Map.of(
@@ -301,31 +289,26 @@ public class AgentService {
                 "당신은 Aidee 프로젝트 관리 AI 어시스턴트입니다.\n" +
                 "\n" +
                 "행동 원칙:\n" +
-                "1. 명확한 행동 지시(생성, 수정, 삭제 등)는 확인 없이 즉시 도구를 호출해 실행한다.\n" +
+                "1. 명확한 행동 지시는 확인 없이 즉시 도구를 호출해 실행한다.\n" +
                 "2. 정보가 필요하면 도구를 먼저 호출한다. 도구 없이 '알 수 없다', '확인해주세요' 등의 말을 하지 않는다.\n" +
-                "3. ID를 모를 때는 목록 조회 도구로 직접 확인한다. 절대 사용자에게 ID를 묻지 않는다.\n" +
-                "4. 회의 내용 질문은 search_meeting_records를 즉시 호출해 검색하고 출처 회의명과 함께 답한다.\n" +
-                "5. 답변은 간결하게 한다. 도구 설명, 재확인 요청, 추가 제안을 하지 않는다.\n" +
-                "6. 요청이 완전히 불명확할 때만 한 문장으로 질문한다."
+                "3. 답변은 간결하게 한다. 도구 설명, 재확인 요청, 추가 제안을 하지 않는다.\n" +
+                "4. 회의 내용 조회 후에는 내용을 그대로 가져오지 않고, 설명한다."
         );
 
         if (meetingId != null) {
-            systemPrompt.append("\n7. 대화 시작 부분에 현재 회의 컨텍스트가 주입되어 있다. '이 회의', '현재 회의'는 해당 회의를 가리킨다.");
-            if (liveTranscriptStore.isLive(meetingId)) {
-                systemPrompt.append(" 이 회의는 실시간 STT 녹음 중이므로 내용 질문 시 get_live_transcript를 호출한다.");
-            }
+            systemPrompt.append("\n5. 현재 열람 중인 회의의 meetingId=").append(meetingId).append("이다. 사용자가 '이 회의', '현재 회의', '이 미팅' 등 회의를 지칭하면 무조건 이 meetingId를 사용한다. 절대 사용자에게 어떤 회의인지 묻지 않는다.");
         }
 
         List<Map<String, Object>> tools = List.of(Map.of("function_declarations", List.of(
-                toolDef("search_meeting_records", "프로젝트의 회의 스크립트에서 관련 내용을 검색합니다. 기본값은 프로젝트 전체 검색이며, meeting_id를 지정하면 해당 회의 내에서만 검색합니다.",
-                        Map.of("query", strParam("검색할 내용"),
+                toolDef("search_meeting_records", "회의 발언 내용(스크립트)을 키워드/의미로 검색합니다.",
+                        Map.of("query", strParam("검색할 발언 내용"),
                                "meeting_id", strParam("특정 회의 내에서만 검색할 경우 회의 ID (선택, 기본값: 프로젝트 전체)")),
                         List.of("query")),
 
                 toolDef("get_meetings", "프로젝트의 회의 목록을 조회합니다. keyword를 지정하면 제목에 해당 단어가 포함된 회의만 반환합니다.",
                         Map.of("keyword", strParam("제목 검색 키워드 (선택)")), List.of()),
 
-                toolDef("get_meeting", "특정 회의의 상세 정보를 조회합니다.",
+                toolDef("get_meeting", "특정 회의의 상세 정보(제목, 날짜, 상태, 요약, 메모, 일정, 스크립트 목록 등)를 조회합니다. 회의에 대한 기본 정보가 필요할 때 사용합니다.",
                         Map.of("meeting_id", strParam("회의 ID")), List.of("meeting_id")),
 
                 toolDef("get_memos", "프로젝트의 메모 목록을 조회합니다.",
