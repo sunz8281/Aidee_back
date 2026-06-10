@@ -57,6 +57,7 @@ jwt:
 gemini:
   api-key: ${GEMINI_API_KEY}
   text-model: ${GEMINI_TEXT_MODEL:gemini-2.5-flash}
+  base-url: ${GEMINI_BASE_URL:https://aiplatform.googleapis.com/v1/publishers/google/models/}
 
 clova:
   speech:

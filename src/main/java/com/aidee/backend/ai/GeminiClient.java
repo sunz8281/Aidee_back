@@ -21,7 +21,8 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class GeminiClient {
 
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    @Value("${gemini.base-url:https://aiplatform.googleapis.com/v1/publishers/google/models/}")
+    private String BASE_URL;
 
     @Value("${gemini.api-key}")
     private String apiKey;

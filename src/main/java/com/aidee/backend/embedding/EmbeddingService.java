@@ -16,7 +16,8 @@ import java.net.http.HttpResponse;
 public class EmbeddingService {
 
     private static final String EMBEDDING_MODEL = "gemini-embedding-001";
-    private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    @Value("${gemini.base-url:https://aiplatform.googleapis.com/v1/publishers/google/models/}")
+    private String BASE_URL;
 
     @Value("${gemini.api-key}")
     private String apiKey;
