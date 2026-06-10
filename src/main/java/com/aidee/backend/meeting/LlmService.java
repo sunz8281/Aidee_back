@@ -45,7 +45,7 @@ public class LlmService {
 
             String requestBody = """
                     {
-                      "contents": [{"parts": [{"text": %s}]}]
+                      "contents": [{"role": "user", "parts": [{"text": %s}]}]
                     }
                     """.formatted(objectMapper.writeValueAsString(prompt));
 

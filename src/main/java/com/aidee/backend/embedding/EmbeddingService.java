@@ -1,6 +1,7 @@
 package com.aidee.backend.embedding;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
@@ -10,14 +11,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmbeddingService {
 
-    private static final String EMBEDDING_MODEL = "gemini-embedding-001";
-    @Value("${gemini.base-url:https://aiplatform.googleapis.com/v1/publishers/google/models/}")
-    private String BASE_URL;
+    // Vertex AI predict 형식 전체 URL
+    // 예: https://us-central1-aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/publishers/google/models/gemini-embedding-001:predict
+    @Value("${gemini.embedding-url}")
+    private String embeddingUrl;
 
     @Value("${gemini.api-key}")
     private String apiKey;
@@ -28,27 +33,28 @@ public class EmbeddingService {
     public float[] embed(String text) {
         try {
             String requestBody = objectMapper.writeValueAsString(
-                    java.util.Map.of(
-                            "content", java.util.Map.of(
-                                    "parts", java.util.List.of(java.util.Map.of("text", text))
-                            ),
-                            "outputDimensionality", 768
+                    Map.of(
+                            "instances", List.of(Map.of("content", text)),
+                            "parameters", Map.of("outputDimensionality", 768)
                     )
             );
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(BASE_URL + EMBEDDING_MODEL + ":embedContent?key=" + apiKey))
+                    .uri(URI.create(embeddingUrl + "?key=" + apiKey))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+            log.debug("[Embedding] 응답 HTTP {}: {}", response.statusCode(),
+                    response.body().length() > 300 ? response.body().substring(0, 300) : response.body());
             JsonNode root = objectMapper.readTree(response.body());
-            JsonNode values = root.path("embedding").path("values");
+            JsonNode values = root.path("predictions").path(0).path("embeddings").path("values");
 
             if (values.isMissingNode() || values.size() == 0) {
-                throw new RuntimeException("임베딩 API 응답 오류: " + response.body());
+                log.error("[Embedding] 응답 파싱 실패 (HTTP {}): {}", response.statusCode(), response.body());
+                throw new RuntimeException("임베딩 API 응답 오류 (HTTP " + response.statusCode() + "): " + response.body());
             }
 
             float[] result = new float[values.size()];

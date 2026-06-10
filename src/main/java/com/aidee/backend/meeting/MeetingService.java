@@ -240,7 +240,7 @@ public class MeetingService {
                         meeting.getTitle(), meeting.getMeetingAt(),
                         seg.startTime(), seg.text(), seg.speaker(), embedding));
             } catch (Exception e) {
-                log.warn("세그먼트 임베딩 실패 (startTime={}): {}", seg.startTime(), e.getMessage());
+                log.warn("세그먼트 임베딩 실패 (startTime={}): {}", seg.startTime(), e.getMessage(), e);
             }
         }
 
@@ -404,6 +404,31 @@ public class MeetingService {
         meeting.getProject().touch();
     }
 
+    public void regenerateEmbeddings(String projectId, String userId) {
+        if (!projectRepository.existsByIdAndUserId(projectId, userId)) {
+            throw new ResourceNotFoundException("프로젝트를 찾을 수 없습니다: " + projectId);
+        }
+        List<ScriptSegment> segments = scriptRepository.findByProjectId(projectId);
+        log.info("[Embedding] 재생성 시작 - projectId={}, segments={}", projectId, segments.size());
+        int success = 0, fail = 0;
+        for (ScriptSegment seg : segments) {
+            try {
+                scriptEmbeddingRepository.deleteByScriptId(seg.getId());
+                Meeting meeting = seg.getMeeting();
+                float[] embedding = embeddingService.embed(seg.getContents());
+                scriptEmbeddingRepository.save(ScriptEmbedding.create(
+                        seg.getId(), meeting.getId(), meeting.getProject().getId(),
+                        meeting.getTitle(), meeting.getMeetingAt(),
+                        seg.getStartTime(), seg.getContents(), seg.getSpeaker(), embedding));
+                success++;
+            } catch (Exception e) {
+                log.warn("[Embedding] 재생성 실패 scriptId={}: {}", seg.getId(), e.getMessage());
+                fail++;
+            }
+        }
+        log.info("[Embedding] 재생성 완료 - 성공:{}, 실패:{}", success, fail);
+    }
+
     @Transactional
     public void updateSpeakerName(String meetingId, String label, String name) {
         Meeting meeting = meetingRepository.findById(meetingId)
@@ -414,4 +439,5 @@ public class MeetingService {
                         () -> speakerNameRepository.save(SpeakerName.create(meeting, label, name))
                 );
     }
+
 }

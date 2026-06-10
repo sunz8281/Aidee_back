@@ -79,6 +79,14 @@ public class MeetingController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/projects/{projectId}/embeddings/regenerate")
+    public ResponseEntity<Void> regenerateEmbeddings(
+            @PathVariable String projectId,
+            @AuthenticationPrincipal User user) {
+        meetingService.regenerateEmbeddings(projectId, user.getId());
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/meetings/{meetingId}/speakers/{label}")
     public ResponseEntity<Void> updateSpeakerName(@PathVariable String meetingId,
                                                    @PathVariable String label,

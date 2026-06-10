@@ -10,6 +10,7 @@ import com.aidee.backend.embedding.ScriptEmbedding;
 import com.aidee.backend.embedding.ScriptEmbeddingRepository;
 import com.aidee.backend.meeting.LiveTranscriptStore;
 import com.aidee.backend.meeting.MeetingService;
+import com.aidee.backend.meeting.SpeakerNameRepository;
 import com.aidee.backend.meeting.dto.CreateMeetingRequest;
 import com.aidee.backend.meeting.dto.MeetingDetailResponse;
 import com.aidee.backend.meeting.MeetingRepository;
@@ -41,7 +42,7 @@ import java.util.stream.Collectors;
 public class AgentService {
 
     private static final int TOP_K = 5;
-    private static final double SIMILARITY_THRESHOLD = 0.65;
+    private static final double SIMILARITY_THRESHOLD = 0.5;
     private static final int MAX_TOOL_ROUNDS = 5;
 
     private final ProjectRepository projectRepository;
@@ -54,6 +55,7 @@ public class AgentService {
     private final ObjectMapper objectMapper;
     private final VectorConverter vectorConverter;
     private final LiveTranscriptStore liveTranscriptStore;
+    private final SpeakerNameRepository speakerNameRepository;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public SseEmitter chat(String projectId, String meetingId, AgentRequest request, String userId) {
@@ -247,8 +249,15 @@ public class AgentService {
 
             return relevant.stream()
                     .map(e -> {
-                        String speakerStr = (e.getSpeaker() != null && !e.getSpeaker().isBlank())
-                                ? " / 발화자: " + e.getSpeaker() : "";
+                        String speakerLabel = e.getSpeaker();
+                        String speakerDisplay = null;
+                        if (speakerLabel != null && !speakerLabel.isBlank()) {
+                            speakerDisplay = speakerNameRepository
+                                    .findByMeetingIdAndLabel(e.getMeetingId(), speakerLabel)
+                                    .map(sn -> sn.getName())
+                                    .orElse(speakerLabel);
+                        }
+                        String speakerStr = speakerDisplay != null ? " / 발화자: " + speakerDisplay : "";
                         int totalSec = e.getStartTime();
                         int h = totalSec / 3600;
                         int m = (totalSec % 3600) / 60;
@@ -304,9 +313,9 @@ public class AgentService {
                 "\n" +
                 "행동 원칙:\n" +
                 "1. 명확한 행동 지시는 확인 없이 즉시 도구를 호출해 실행한다.\n" +
-                "2. 정보가 필요하면 도구를 먼저 호출한다. 도구 없이 '알 수 없다', '확인해주세요' 등의 말을 하지 않는다.\n" +
+                "2. 정보가 필요하면 반드시 도구를 먼저 호출한다. 도구 없이 절대로 '알 수 없다', '찾을 수 없다', '확인해주세요' 등의 말을 하지 않는다.\n" +
                 "3. 답변은 간결하게 한다. 도구 설명, 재확인 요청, 추가 제안을 하지 않는다.\n" +
-                "4. 회의 내용 조회 후에는 내용을 그대로 가져오지 않고, 설명한다."
+                "4. 회의 내용 조회 후에는 내용을 그대로 가져오지 않고, 설명한다.\n"
         );
 
         if (meetingId != null) {
@@ -367,6 +376,7 @@ public class AgentService {
         Map<String, Object> body = Map.of(
                 "system_instruction", Map.of("parts", List.of(Map.of("text", systemPrompt.toString()))),
                 "tools", tools,
+                "tool_config", Map.of("function_calling_config", Map.of("mode", "AUTO")),
                 "contents", contents
         );
         return objectMapper.writeValueAsString(body);
